@@ -10933,26 +10933,45 @@ pub fn mod_racine_repondre(choix: Option<bool>) {
     }
 }
 
-fn suivi_mod(app: &AppHandle, suivi: u32) -> impl Fn(&'static str, u64, u64) + Send + Sync + Clone + 'static {
-    let app = app.clone();
-    let dernier = std::sync::Arc::new(std::sync::Mutex::new(None::<(std::time::Instant, &'static str, u64)>));
-    move |etape, faits, total| {
-        let mut d = dernier.lock().unwrap_or_else(|e| e.into_inner());
-        let maintenant = std::time::Instant::now();
-        let debit = match *d {
+/// Au plus un envoi de `mod-progres` par intervalle (quelques fois par seconde, comme les téléchargements de jeux).
+const CADENCE_MOD_MS: u64 = 250;
+
+/// La cadence des événements `mod-progres` (sans horloge ni fenêtre : testable seule). Toujours envoyés : le premier
+/// d'une étape (son début) et sa fin (faits = total, une fois) ; sinon au plus un par `CADENCE_MOD_MS`.
+#[derive(Default)]
+struct CadenceMod {
+    dernier: Option<(std::time::Instant, &'static str, u64)>,
+}
+
+impl CadenceMod {
+    /// `Some(débit)` (octets par seconde, 0 : inconnu ou compté en fichiers) si cet état doit partir maintenant.
+    fn passer(&mut self, maintenant: std::time::Instant, etape: &'static str, faits: u64, total: u64) -> Option<u64> {
+        let debit = match self.dernier {
             Some((t, e, avant)) if e == etape => {
-                let ms = maintenant.duration_since(t).as_millis() as u64;
-                // Le dernier envoi passe toujours (fin d'étape) ; un total nul n'en fait jamais une rafale.
-                if ms < 400 && (total == 0 || faits < total) {
-                    return;
+                let ms = maintenant.saturating_duration_since(t).as_millis() as u64;
+                // La fin passe toujours ; un total nul n'en fait jamais une rafale.
+                let fin = total > 0 && faits >= total && avant < total;
+                if ms < CADENCE_MOD_MS && !fin {
+                    return None;
                 }
-                // Les étapes qui comptent des fichiers (pose, lot M1 : retrait et remise des mods de Vortex) : pas de débit.
-                if matches!(etape, "pose" | "retrait" | "remise") || ms == 0 { 0 } else { faits.saturating_sub(avant).saturating_mul(1000) / ms }
+                // Les étapes qui comptent des fichiers (pose, lot M1 : vérification, retrait et remise) : pas de débit.
+                if matches!(etape, "pose" | "verification" | "retrait" | "remise") || ms == 0 { 0 } else { faits.saturating_sub(avant).saturating_mul(1000) / ms }
             }
             _ => 0,
         };
-        *d = Some((maintenant, etape, faits));
-        let _ = app.emit("mod-progres", ProgresMod { suivi, etape, faits, total, debit });
+        self.dernier = Some((maintenant, etape, faits));
+        Some(debit)
+    }
+}
+
+fn suivi_mod(app: &AppHandle, suivi: u32) -> impl Fn(&'static str, u64, u64) + Send + Sync + Clone + 'static {
+    let app = app.clone();
+    let cadence = std::sync::Arc::new(std::sync::Mutex::new(CadenceMod::default()));
+    move |etape, faits, total| {
+        let debit = cadence.lock().unwrap_or_else(|e| e.into_inner()).passer(std::time::Instant::now(), etape, faits, total);
+        if let Some(debit) = debit {
+            let _ = app.emit("mod-progres", ProgresMod { suivi, etape, faits, total, debit });
+        }
     }
 }
 
@@ -11179,7 +11198,7 @@ pub async fn mods_vortex_etat(noyau: State<'_, Noyau>, id: i64) -> Resultat<Opti
     tauri::async_runtime::spawn_blocking(move || {
         let mut e = crate::mods_vortex::etat(&dossier);
         // Rien à dire (ni Vortex, ni retrait) : pas un relevé des processus pour rien.
-        if e.present || e.retrait.is_some() || !e.retires.is_empty() {
+        if e.present || e.retrait.is_some() || !e.retires.is_empty() || !e.remis.is_empty() {
             e.verrou = verrou_vortex(occupe, !crate::lancement::processus_du_dossier(&dossier).is_empty(), gog, galaxy_ouvert, crate::lancement::vortex_ouvert);
         }
         Some(e)
@@ -11194,6 +11213,10 @@ enum OperationVortex {
     Reprendre,
     Remettre(String),
     ToutRemettre,
+    /// 🧹 Range de nouveau UN mod remis (partie « 🧩 Dans le jeu »).
+    RetirerMod(String),
+    /// 🧹 Range de nouveau TOUS les mods remis (sans le dépôt de Vortex, plus de retrait global possible).
+    ToutRanger,
 }
 
 /// Le bilan d'une opération sur les mods de Vortex.
@@ -11202,6 +11225,7 @@ enum OperationVortex {
 pub enum BilanVortex {
     Retrait(crate::mods_vortex::BilanRetrait),
     Remise(crate::mods_vortex::BilanRemise),
+    RetraitMod(crate::mods_vortex::BilanRetraitMod),
 }
 
 /// Le chemin commun : jeu prêt à écrire (Steam ou GOG au repos, rien en cours), occupé, parties à l'abri (déclencheur
@@ -11232,6 +11256,8 @@ async fn operer_vortex(app: &AppHandle, noyau: &Noyau, id: i64, suivi: u32, op: 
             OperationVortex::Reprendre => BilanVortex::Retrait(crate::mods_vortex::reprendre(&dossier, c, &suivi)?),
             OperationVortex::Remettre(source) => BilanVortex::Remise(crate::mods_vortex::remettre_mod(&dossier, c, &source, &suivi)?),
             OperationVortex::ToutRemettre => BilanVortex::Remise(crate::mods_vortex::tout_remettre(&dossier, c, &suivi)?),
+            OperationVortex::RetirerMod(source) => BilanVortex::RetraitMod(crate::mods_vortex::retirer_mod(&dossier, c, &source, &suivi)?),
+            OperationVortex::ToutRanger => BilanVortex::RetraitMod(crate::mods_vortex::tout_reranger(&dossier, c, &suivi)?),
         })
     })
     .await
@@ -11250,6 +11276,10 @@ fn journal_vortex(id: i64, r: &Resultat<BilanVortex>) -> String {
         Ok(BilanVortex::Remise(b)) => format!(
             "mods vortex : {} remis, {} place(s) prise(s), {} changé(s), manifeste remis : {}, jeu {id}",
             b.remis, b.places_prises, b.changes, if b.deploiement_remis { "oui" } else { "non" }
+        ),
+        Ok(BilanVortex::RetraitMod(b)) => format!(
+            "mods vortex : {} mod(s) remis rangé(s) de nouveau, {} fichier(s) rangé(s), {} changé(s), {} parti(s), {} place(s) prise(s), {} erreur(s), {} coincé(s) à part, jeu {id}",
+            b.mods, b.ranges, b.changes, b.partis, b.places_prises, b.erreurs, b.coinces
         ),
         Err(Erreur::AbriImpossible { .. }) => format!("mods vortex : rien fait, parties non mises à l'abri, jeu {id}"),
         Err(_) => format!("mods vortex : opération arrêtée, jeu {id}"),
@@ -11278,6 +11308,19 @@ pub async fn mods_vortex_remettre(app: AppHandle, noyau: State<'_, Noyau>, id: i
 #[tauri::command]
 pub async fn mods_vortex_tout_remettre(app: AppHandle, noyau: State<'_, Noyau>, id: i64, suivi: u32) -> Resultat<BilanVortex> {
     operer_vortex(&app, &noyau, id, suivi, OperationVortex::ToutRemettre).await
+}
+
+/// 🧹 Range de nouveau UN mod remis dans le jeu (`source`, tel que l'état l'a donné dans `remis`) : la preuve
+/// d'identité notée au retrait, le même dossier du retrait ; ni le dépôt de Vortex ni un second lien ne sont exigés.
+#[tauri::command]
+pub async fn mods_vortex_retirer_mod(app: AppHandle, noyau: State<'_, Noyau>, id: i64, source: String, suivi: u32) -> Resultat<BilanVortex> {
+    operer_vortex(&app, &noyau, id, suivi, OperationVortex::RetirerMod(source)).await
+}
+
+/// 🧹 Range de nouveau TOUS les mods remis dans le jeu (la même preuve, un par un).
+#[tauri::command]
+pub async fn mods_vortex_tout_ranger(app: AppHandle, noyau: State<'_, Noyau>, id: i64, suivi: u32) -> Resultat<BilanVortex> {
+    operer_vortex(&app, &noyau, id, suivi, OperationVortex::ToutRanger).await
 }
 
 // --- Nexus Mods (lot 0.82.0 ; ✅ Seb 19-20/10) : la personne clique « Mod Manager Download » sur le site ; le lien
@@ -15252,10 +15295,43 @@ pub(crate) mod tests_abri_auto {
         let b = crate::mods_vortex::BilanRetrait { deplaces: 2014, laisses: 1, laisses_rompus: 1, mods: 284, octets: 4_100_000_000, dossiers_retires: 449, sauvegardes_vortex: 1, deploiement_range: true };
         let l = super::journal_vortex(-77, &Ok(super::BilanVortex::Retrait(b)));
         assert_eq!(l, "mods vortex : 2014 déplacés, 1 laissé(s) (1 rompu(s)), 284 mod(s), 449 dossier(s) vidé(s), manifeste rangé : oui, jeu -77");
-        let r = crate::mods_vortex::BilanRemise { remis: 3, places_prises: 1, changes: 0, deploiement_remis: false };
+        let r = crate::mods_vortex::BilanRemise { remis: 3, places_prises: 1, changes: 0, erreurs: 0, deploiement_remis: false };
         assert_eq!(super::journal_vortex(5, &Ok(super::BilanVortex::Remise(r))), "mods vortex : 3 remis, 1 place(s) prise(s), 0 changé(s), manifeste remis : non, jeu 5");
         let e = super::journal_vortex(5, &Err(Erreur::Disque(r"D:\Jeux\Cyberpunk 2077\x : refusé".into())));
         assert!(!e.contains("Jeux") && !e.contains("Cyberpunk"), "{e}");
+        let m = crate::mods_vortex::BilanRetraitMod { ranges: 12, changes: 1, partis: 2, places_prises: 0, erreurs: 3, coinces: 1, mods: 1 };
+        assert_eq!(
+            super::journal_vortex(5, &Ok(super::BilanVortex::RetraitMod(m))),
+            "mods vortex : 1 mod(s) remis rangé(s) de nouveau, 12 fichier(s) rangé(s), 1 changé(s), 2 parti(s), 0 place(s) prise(s), 3 erreur(s), 1 coincé(s) à part, jeu 5"
+        );
+    }
+
+    /// 0.227.1 (défaut 2 vu par Seb le 25/11) : la cadence de `mod-progres` — le début de chaque étape et sa fin
+    /// partent toujours, le reste au plus quelques fois par seconde ; un retrait de 2 014 fichiers en 5 s envoie donc
+    /// une vingtaine d'états, jamais un seul ni deux mille.
+    #[test]
+    fn la_cadence_des_progres_de_mod_envoie_debut_fin_et_quelques_fois_par_seconde() {
+        let t0 = std::time::Instant::now();
+        let ms = |n: u64| t0 + std::time::Duration::from_millis(n);
+        let mut c = super::CadenceMod::default();
+        assert_eq!(c.passer(ms(0), "verification", 0, 2014), Some(0), "le début de la vérification");
+        assert_eq!(c.passer(ms(10), "verification", 1, 2014), None);
+        assert_eq!(c.passer(ms(20), "verification", 2014, 2014), Some(0), "sa fin");
+        assert_eq!(c.passer(ms(25), "retrait", 0, 2014), Some(0), "une nouvelle étape part tout de suite");
+        // 2 014 fichiers en 5 s (un toutes les ~2,5 ms) : début + fin + au plus un par 250 ms.
+        let mut envoyes = 1;
+        for k in 1..=2014u64 {
+            if c.passer(ms(25 + k * 5000 / 2014), "retrait", k, 2014).is_some() {
+                envoyes += 1;
+            }
+        }
+        assert!((15..=25).contains(&envoyes), "{envoyes} envois");
+        assert_eq!(c.passer(ms(25 + 5000 + 10), "retrait", 2014, 2014), None, "la fin ne part qu'une fois");
+        // Un téléchargement : le débit est calculé ; un total inconnu ne fait jamais de rafale.
+        let mut c = super::CadenceMod::default();
+        assert_eq!(c.passer(ms(0), "telechargement", 0, 0), Some(0));
+        assert_eq!(c.passer(ms(100), "telechargement", 500, 0), None);
+        assert_eq!(c.passer(ms(500), "telechargement", 1000, 0), Some(2000));
     }
 
     /// Des parties seulement dans OneDrive : jamais téléchargées en automatique ; avant une opération, la cause est dite.

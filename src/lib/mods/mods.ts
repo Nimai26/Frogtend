@@ -88,8 +88,9 @@ export function pageNexus(url: string | null | undefined): { domaine: string; mo
 /** Où en est l'installation d'un mod (événement `mod-progres` du cœur, lot 0.82.3). */
 export interface ProgresMod {
   suivi: number;
-  /** `retrait` et `remise` (lot M1) : les mods de Vortex rangés hors du jeu, ou remis — comptés en fichiers. */
-  etape: 'telechargement' | 'decompression' | 'pose' | 'retrait' | 'remise';
+  /** `verification`, `retrait` et `remise` (lot M1) : les fichiers des mods de Vortex prouvés, rangés hors du jeu, ou
+   * remis — comptés en fichiers. */
+  etape: 'telechargement' | 'decompression' | 'pose' | 'verification' | 'retrait' | 'remise';
   faits: number;
   total: number;
   /** Octets par seconde (0 : inconnu). */
@@ -101,6 +102,7 @@ export const ETAPE_MOD: Record<ProgresMod['etape'], string> = {
   telechargement: 'Téléchargement',
   decompression: 'Décompression',
   pose: 'Pose dans le jeu',
+  verification: 'Vérification des fichiers des mods',
   retrait: 'Rangement des mods hors du jeu',
   remise: 'Remise dans le jeu',
 };
@@ -112,9 +114,13 @@ export function pourcentMod(p: ProgresMod): number {
 }
 
 /** Les chiffres : « 120 Mo sur environ 450 Mo · 5,2 Mo/s · encore 2 min » (`approx` : un total de Nexus, arrondi) ;
- * pendant la pose, « 12 fichiers sur 30 ». Jamais « NaN » ni « Infinity ». */
+ * pendant la pose, « 12 fichiers sur 30 » (« 0 fichier sur 2 014 », nombres à la française). Jamais « NaN » ni
+ * « Infinity ». */
 export function chiffresMod(p: ProgresMod, approx = false): string {
-  if (p.etape === 'pose' || p.etape === 'retrait' || p.etape === 'remise') return `${p.faits} fichier${p.faits > 1 ? 's' : ''} sur ${p.total}`;
+  if (p.etape === 'pose' || p.etape === 'verification' || p.etape === 'retrait' || p.etape === 'remise') {
+    const fr = (n: number) => n.toLocaleString('fr-FR');
+    return `${fr(p.faits)} fichier${p.faits > 1 ? 's' : ''} sur ${fr(p.total)}`;
+  }
   const faits = Math.min(p.faits, p.total > 0 ? p.total : p.faits);
   let t = p.total > 0 ? `${taille(faits)} sur ${approx ? 'environ ' : ''}${taille(p.total)}` : taille(faits);
   if (p.debit > 0) {

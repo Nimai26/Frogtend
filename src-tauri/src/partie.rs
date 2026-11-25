@@ -1762,6 +1762,13 @@ impl Noyau {
     /// s'il en a un, puis ce que Frogtend a mis sur le disque (installation, fichiers reçus, médias). Les abris
     /// restent.
     pub async fn retirer_du_pc(&self, id: i64) -> Resultat<Abri> {
+        /// Un retrait de mods de Vortex dans le dossier d'installation ou le dossier reçu du jeu ?
+        fn retraits_de_vortex(j: &crate::jeux_pc::JeuPc) -> bool {
+            [j.installation.as_ref().map(|i| PathBuf::from(&i.dossier)), Some(PathBuf::from(&j.dossier))]
+                .into_iter()
+                .flatten()
+                .any(|d| !crate::mods_vortex::retraits(&d).is_empty())
+        }
         let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         if !matches!(j.etat, Etat::Telecharge) {
@@ -1770,6 +1777,13 @@ impl Noyau {
         // Un jeu d'une boutique : c'est elle qui le désinstalle ; Frogtend ne retire pas sa ligne (son temps de jeu).
         if j.installation.as_ref().is_some_and(|i| i.boutique.is_some()) {
             return Err(Erreur::Refus("Ce jeu est installé par sa boutique : désinstalle-le depuis elle.".into()));
+        }
+        // 0.227.1 : les mods de Vortex retirés par Frogtend sont rangés DANS le dossier du jeu (souvent leur seule copie,
+        // Vortex désinstallé) : jamais effacés avec le jeu. Refusé avant tout le reste (rien n'a changé).
+        if !crate::import_local::est_importe(&j) && retraits_de_vortex(&j) {
+            return Err(Erreur::Refus(
+                "Ce jeu garde dans son dossier des mods de Vortex retirés par Frogtend, peut-être leur seule copie : Frogtend ne l'efface pas. Remets ou garde ces mods d'abord.".into(),
+            ));
         }
         // Lot S3 (Seb, 23/11) : les parties rangées HORS du dossier du jeu, à l'abri AVANT tout le reste (arrêt des
         // versions en route, désinstalleur qui peut les effacer) ; un échec arrête le retrait sans RIEN avoir changé,
@@ -2456,6 +2470,36 @@ mod tests {
         n.retirer_du_pc(110).await.unwrap();
         assert!(!installe.exists() && n.registre().jeu(110).unwrap().is_none());
         assert_eq!(abris_emplacements(&abris), [("avant_retrait".to_string(), b"toute neuve".to_vec())]);
+    }
+
+    /// 0.227.1 : un jeu qui garde des mods de Vortex retirés par Frogtend (leur seule copie, peut-être) n'est jamais
+    /// effacé du PC : refusé avant tout, rien n'a bougé.
+    #[tokio::test]
+    async fn un_jeu_qui_garde_des_mods_de_vortex_retires_n_est_jamais_efface() {
+        let (d, n) = noyau_avec(&[("dune.zip", &zip(&[("DUNE.EXE", b"MZ")]))], "Jeu — prêt à jouer").await;
+        let (installe, _sav, abris) = jeu_pc_installe(&d, &n).await;
+        let r = crate::mods_vortex::Retrait {
+            version: 1,
+            etat: crate::mods_vortex::EtatRetrait::Fini,
+            commence_le: "100".into(),
+            depot: String::new(),
+            fichiers: vec![],
+            dossiers_retires: vec![],
+            deploiement_range: true,
+            sauvegardes_vortex: vec![],
+        };
+        let dossier = crate::mods_vortex::dossier_retraits(&installe).join("100");
+        std::fs::create_dir_all(dossier.join("fichiers")).unwrap();
+        std::fs::write(dossier.join("fichiers").join("mod.archive"), b"seule copie").unwrap();
+        std::fs::write(dossier.join("retrait.json"), serde_json::to_vec(&r).unwrap()).unwrap();
+        match n.retirer_du_pc(110).await {
+            Err(Erreur::Refus(m)) => assert!(m.contains("mods de Vortex") && !m.contains(":\\"), "{m}"),
+            autre => panic!("{autre:?}"),
+        }
+        assert_eq!(std::fs::read(dossier.join("fichiers").join("mod.archive")).unwrap(), b"seule copie");
+        assert!(installe.join("DUNE.EXE").is_file() || installe.is_dir());
+        assert!(n.registre().jeu(110).unwrap().is_some() && !abris.join("110").exists(), "rien d'autre n'a été touché");
+        assert!(!n.utilise(110));
     }
 
     #[tokio::test]

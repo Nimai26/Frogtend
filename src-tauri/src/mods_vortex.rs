@@ -386,6 +386,8 @@ pub enum EtatFichier {
     BloqueAPart,
     Remis,
     Laisse,
+    /// Remis, puis effacé du jeu (par la personne) : il ne bloque plus son mod, qui sort de « Dans le jeu ».
+    Parti,
 }
 
 impl EtatFichier {
@@ -470,7 +472,7 @@ fn lire_retrait(dossier: &Path) -> Option<Retrait> {
     std::fs::symlink_metadata(&f).ok().filter(|m| m.is_file() && m.len() <= TAILLE_MAX_MANIFESTE)?;
     let mut r: Retrait = serde_json::from_slice(&std::fs::read(&f).ok()?).ok()?;
     for x in &mut r.fichiers {
-        if (x.etat == EtatFichier::ADeplacer || x.etat.a_part()) && (rel_sur(&x.rel).as_deref() != Some(x.rel.as_str()) || source_sure(&x.source).is_none()) {
+        if (x.etat == EtatFichier::ADeplacer || x.etat.a_part() || x.etat == EtatFichier::Remis) && (rel_sur(&x.rel).as_deref() != Some(x.rel.as_str()) || source_sure(&x.source).is_none()) {
             x.etat = EtatFichier::Laisse;
             x.motif = Some(Motif::CheminDangereux);
         }
@@ -568,12 +570,21 @@ pub fn retirer(jeu: &Path, copie: Option<&Path>, quand: &str, progres: &(dyn Fn(
 }
 
 /// Le plan d'un retrait : chaque fichier listé, prouvé (à déplacer) ou laissé avec son motif.
-fn planifier(jeu: &Path, d: &Deploiement) -> Vec<FichierRetire> {
+/// `progres("verification", faits, total)` en fichiers aux chemins sûrs (ceux que l'écran compte par mod) : la preuve
+/// de 2 015 fichiers prend quelques secondes, l'écran le montre dès le premier (0 sur N) jusqu'au dernier.
+fn planifier(jeu: &Path, d: &Deploiement, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Vec<FichierRetire> {
     let mut vus = HashSet::new();
+    let total = d.fichiers.iter().filter(|e| e.sur).count() as u64;
+    let mut faits = 0u64;
+    progres("verification", 0, total);
     d.fichiers
         .iter()
         .map(|e| {
             let preuve = if e.sur && !vus.insert(e.rel.to_lowercase()) { Err(Motif::Double) } else { prouver(jeu, &d.depot, e) };
+            if e.sur {
+                faits += 1;
+                progres("verification", faits, total);
+            }
             match preuve {
                 Ok(i) => FichierRetire { rel: e.rel.clone(), source: e.source.clone(), taille: i.taille, volume: i.volume, index: i.index, etat: EtatFichier::ADeplacer, motif: None },
                 Err(m) => FichierRetire { rel: e.rel.clone(), source: e.source.clone(), taille: 0, volume: 0, index: 0, etat: EtatFichier::Laisse, motif: Some(m) },
@@ -589,7 +600,7 @@ fn retirer_avec(jeu: &Path, copie: Option<&Path>, quand: &str, progres: &(dyn Fn
     }
     let d = lire_deploiement(jeu)?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de mods posés par Vortex.".into()))?;
     // Le plan : chaque fichier prouvé AVANT le premier déplacement (un refus ne coûte rien).
-    let fichiers = planifier(jeu, &d);
+    let fichiers = planifier(jeu, &d, progres);
     if !fichiers.iter().any(|f| f.etat == EtatFichier::ADeplacer) {
         return Err(Erreur::Refus("Aucun fichier de ce jeu n'est prouvé venir de Vortex : rien n'est déplacé.".into()));
     }
@@ -727,8 +738,9 @@ fn poursuivre(jeu: &Path, dossier: &Path, r: &mut Retrait, copie: Option<&Path>,
     if !creer_dossiers(jeu, &fichiers) {
         return Err(Erreur::Refus("Le dossier du retrait passe par un lien : rien de plus n'est déplacé.".into()));
     }
-    let total = r.fichiers.len() as u64;
-    let mut faits = r.fichiers.iter().filter(|f| f.etat != EtatFichier::ADeplacer).count() as u64;
+    // Compté en fichiers PROUVÉS (ceux que la confirmation annonce : « 0 fichier sur 2 014 », jamais les laissés).
+    let total = r.fichiers.iter().filter(|f| f.etat != EtatFichier::Laisse).count() as u64;
+    let mut faits = r.fichiers.iter().filter(|f| f.etat != EtatFichier::Laisse && f.etat != EtatFichier::ADeplacer).count() as u64;
     progres("retrait", faits, total);
     let (mut ici, mut depuis_ecriture) = (0usize, 0usize);
     for k in 0..r.fichiers.len() {
@@ -751,7 +763,7 @@ fn poursuivre(jeu: &Path, dossier: &Path, r: &mut Retrait, copie: Option<&Path>,
         }
         ici += 1;
         depuis_ecriture += 1;
-        faits += 1;
+        faits = (faits + 1).min(total);
         progres("retrait", faits, total);
         if depuis_ecriture >= LOT {
             ecrire_retrait(dossier, r, copie)?;
@@ -786,52 +798,87 @@ pub struct BilanRemise {
     pub places_prises: usize,
     /// Laissés rangés : ils ont changé depuis le retrait.
     pub changes: usize,
+    /// Laissés rangés : Windows a refusé le renommage pour une autre raison (droits, fichier ouvert…).
+    #[serde(default)]
+    pub erreurs: usize,
     pub deploiement_remis: bool,
 }
 
+/// Pourquoi un fichier n'a pas bougé (remise, ou nouveau rangement d'un fichier remis).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Echec {
+    /// Sa place d'arrivée est prise (vue avant, ou refus « existe déjà » de Windows).
+    PlacePrise,
+    /// Ce n'est plus le fichier noté (changé, remplacé, lien ou jonction sur son chemin).
+    Change,
+    /// Il n'est plus là du tout (effacé par la personne).
+    Parti,
+    /// Windows a refusé le renommage pour une autre raison.
+    Erreur,
+}
+
+/// Un refus de renommage de Windows : « place prise » seulement pour ERROR_ALREADY_EXISTS (183) et ERROR_FILE_EXISTS
+/// (80) ; tout autre refus est une erreur, comptée à part.
+fn echec_du_renommage(e: &std::io::Error) -> Echec {
+    if matches!(e.raw_os_error(), Some(183) | Some(80)) || e.kind() == std::io::ErrorKind::AlreadyExists {
+        Echec::PlacePrise
+    } else {
+        Echec::Erreur
+    }
+}
+
 /// Après une coupure, le manifeste du retrait peut être en retard (il n'est réécrit que tous les `LOT` fichiers) : un
-/// fichier noté « à déplacer » (ou laissé parce qu'il avait « changé ») qui n'est plus dans le jeu, et dont l'identité
-/// à l'arrivée est celle notée, est bel et bien rangé.
-fn recaler(jeu: &Path, dossier: &Path, r: &mut Retrait) {
+/// fichier noté « à déplacer » (ou laissé parce qu'il avait « changé », ou « remis ») qui n'est plus dans le jeu, et dont
+/// l'identité à l'arrivée est celle notée, est bel et bien rangé. Un fichier « remis » qui n'est plus ni dans le jeu ni
+/// rangé a été effacé : il est noté « parti » (il ne bloque plus son mod). Rend vrai si quelque chose a changé.
+fn recaler(jeu: &Path, dossier: &Path, r: &mut Retrait) -> bool {
     let fichiers = dossier.join("fichiers");
+    let mut change = false;
     for f in &mut r.fichiers {
-        let candidat = f.etat == EtatFichier::ADeplacer || (f.etat == EtatFichier::Laisse && f.motif == Some(Motif::Change));
+        let candidat = f.etat == EtatFichier::ADeplacer || f.etat == EtatFichier::Remis || (f.etat == EtatFichier::Laisse && f.motif == Some(Motif::Change));
         if !candidat || f.index == 0 || rel_sur(&f.rel).as_deref() != Some(f.rel.as_str()) {
             continue;
         }
-        if std::fs::symlink_metadata(joindre(jeu, &f.rel)).is_ok() {
-            continue;
+        match std::fs::symlink_metadata(joindre(jeu, &f.rel)) {
+            Ok(_) => continue,
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => continue,
+            Err(_) => {}
         }
         if matches!(identite(&joindre(&fichiers, &f.rel)), Ok(i) if (i.volume, i.index) == (f.volume, f.index) && !i.dossier) {
             f.etat = EtatFichier::Deplace;
             f.motif = None;
+            change = true;
+        } else if f.etat == EtatFichier::Remis && std::fs::symlink_metadata(joindre(&fichiers, &f.rel)).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound) {
+            f.etat = EtatFichier::Parti;
+            f.motif = Some(Motif::Absent);
+            change = true;
         }
     }
+    change
 }
 
 /// Remet les fichiers `idx` d'un retrait à leur place : seulement si la place est libre et si le fichier rangé est
 /// toujours le même (même index ; un fichier « bloqué à part » revient tel quel) ; les dossiers manquants sont recréés
-/// (jamais les marqueurs).
-fn remettre_fichiers(jeu: &Path, dossier: &Path, r: &mut Retrait, idx: &[usize], progres: &(dyn Fn(&'static str, u64, u64) + Sync), b: &mut BilanRemise) {
+/// (jamais les marqueurs). `faits`/`total` : la progression GLOBALE (plusieurs retraits).
+fn remettre_fichiers(jeu: &Path, dossier: &Path, r: &mut Retrait, idx: &[usize], progres: &(dyn Fn(&'static str, u64, u64) + Sync), faits: &mut u64, total: u64, b: &mut BilanRemise) {
     let fichiers = dossier.join("fichiers");
-    let total = idx.len() as u64;
-    for (n, &k) in idx.iter().enumerate() {
+    for &k in idx {
         let f = r.fichiers[k].clone();
         let (origine, range) = (joindre(jeu, &f.rel), joindre(&fichiers, &f.rel));
         let issue = (|| {
             if std::fs::symlink_metadata(&origine).is_ok() {
-                return Err(true);
+                return Err(Echec::PlacePrise);
             }
             match identite(&range) {
                 Ok(i) if !i.dossier && !i.point_de_reanalyse && !crate::garde::lien_entre(&fichiers, &range) && (f.etat == EtatFichier::BloqueAPart || (i.volume, i.index) == (f.volume, f.index)) => {}
-                _ => return Err(false),
+                _ => return Err(Echec::Change),
             }
-            let parent = origine.parent().ok_or(false)?;
+            let parent = origine.parent().ok_or(Echec::Change)?;
             if !creer_dossiers(jeu, parent) {
-                return Err(false);
+                return Err(Echec::Change);
             }
             // Jamais par-dessus : si la place vient d'être prise, le déplacement échoue.
-            deplacer(&range, &origine).map_err(|_| true)
+            deplacer(&range, &origine).map_err(|e| echec_du_renommage(&e))
         })();
         match issue {
             Ok(()) => {
@@ -848,11 +895,24 @@ fn remettre_fichiers(jeu: &Path, dossier: &Path, r: &mut Retrait, idx: &[usize],
                     p = d.parent().map(Path::to_path_buf);
                 }
             }
-            Err(true) => b.places_prises += 1,
-            Err(false) => b.changes += 1,
+            Err(Echec::PlacePrise) => b.places_prises += 1,
+            Err(Echec::Erreur) => b.erreurs += 1,
+            Err(_) => b.changes += 1,
         }
-        progres("remise", n as u64 + 1, total);
+        *faits = (*faits + 1).min(total);
+        progres("remise", *faits, total);
     }
+}
+
+/// Le dépôt de Vortex tient-il encore ce retrait ? Un vrai dossier sûr, ET au moins un fichier noté qui s'y prouve
+/// encore (même volume et même index) : sinon le manifeste de Vortex ne mènerait nulle part.
+fn depot_tient(jeu: &Path, r: &Retrait) -> bool {
+    let depot = PathBuf::from(&r.depot);
+    depot_sur(&depot, jeu)
+        && r.fichiers.iter().filter(|f| f.index != 0 && rel_sur(&f.rel).is_some() && source_sure(&f.source).is_some()).any(|f| {
+            let p = joindre(&joindre(&depot, &f.source), &f.rel);
+            !crate::garde::lien_entre(&depot, &p) && matches!(identite(&p), Ok(i) if (i.volume, i.index) == (f.volume, f.index) && !i.dossier)
+        })
 }
 
 /// Un retrait dont plus aucun fichier n'est à part : `vortex.deployment.json` revient (si sa place est libre) et le
@@ -863,53 +923,232 @@ fn finir_si_entier(jeu: &Path, dossier: &Path, r: &mut Retrait, b: &mut BilanRem
         return;
     }
     let (dans_le_jeu, range) = (jeu.join(MANIFESTE_VORTEX), dossier.join(MANIFESTE_VORTEX));
-    if std::fs::symlink_metadata(&range).is_ok_and(|m| m.is_file()) && deplacer(&range, &dans_le_jeu).is_ok() {
+    // Le dépôt de Vortex effacé (Vortex désinstallé, 25/11) : son manifeste ne revient pas — il ne mènerait plus
+    // nulle part, et l'écran ne verrait plus ces mods (« dépôt introuvable ») ; ils restent « dans le jeu », retirables.
+    if depot_tient(jeu, r) && std::fs::symlink_metadata(&range).is_ok_and(|m| m.is_file()) && deplacer(&range, &dans_le_jeu).is_ok() {
         b.deploiement_remis = true;
     }
     r.deploiement_range = range.is_file();
     r.etat = if r.deploiement_range { EtatRetrait::Fini } else { EtatRetrait::ToutRemis };
 }
 
-/// Remet UN mod (`source`) dans le jeu, depuis tous les retraits où il est rangé ; un retrait qui n'a plus rien à part
-/// rend aussi `vortex.deployment.json`.
-pub fn remettre_mod(jeu: &Path, copie: Option<&Path>, source: &str, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<BilanRemise> {
+/// Les retraits pas encore « tout remis » (du plus récent au plus ancien), recalés ; un retrait que le recalage a changé
+/// est réécrit tout de suite (une coupure ne laisse jamais un mod coincé). Refus si un retrait est interrompu.
+fn retraits_recales(jeu: &Path, copie: Option<&Path>) -> Resultat<Vec<(PathBuf, Retrait)>> {
     let liste = retraits(jeu);
     if liste.iter().any(|(_, r)| r.etat == EtatRetrait::EnCours) {
         return Err(Erreur::Refus("Le retrait des mods a été interrompu : reprends-le, ou remets tout comme avant.".into()));
     }
+    let mut l = Vec::new();
+    for (d, mut r) in liste.into_iter().rev().filter(|(_, r)| r.etat != EtatRetrait::ToutRemis) {
+        if recaler(jeu, &d, &mut r) {
+            ecrire_retrait(&d, &r, copie)?;
+        }
+        l.push((d, r));
+    }
+    Ok(l)
+}
+
+/// Remet UN mod (`source`) dans le jeu, depuis tous les retraits où il est rangé ; un retrait qui n'a plus rien à part
+/// rend aussi `vortex.deployment.json`. La progression compte tous les retraits ensemble.
+pub fn remettre_mod(jeu: &Path, copie: Option<&Path>, source: &str, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<BilanRemise> {
+    let liste: Vec<(PathBuf, Retrait, Vec<usize>)> = retraits_recales(jeu, copie)?
+        .into_iter()
+        .map(|(d, r)| {
+            let idx = (0..r.fichiers.len()).filter(|&k| r.fichiers[k].etat.a_part() && r.fichiers[k].source.eq_ignore_ascii_case(source)).collect();
+            (d, r, idx)
+        })
+        .filter(|(_, _, idx): &(PathBuf, Retrait, Vec<usize>)| !idx.is_empty())
+        .collect();
+    if liste.is_empty() {
+        return Err(Erreur::Introuvable("Ce mod n'est pas parmi les mods retirés.".into()));
+    }
+    let total = liste.iter().map(|(_, _, idx)| idx.len() as u64).sum::<u64>();
+    let mut faits = 0;
+    progres("remise", 0, total);
     let mut b = BilanRemise::default();
-    let mut trouve = false;
-    for (dossier, mut r) in liste.into_iter().rev() {
-        if r.etat == EtatRetrait::ToutRemis {
-            continue;
-        }
-        recaler(jeu, &dossier, &mut r);
-        let idx: Vec<usize> = (0..r.fichiers.len()).filter(|&k| r.fichiers[k].etat.a_part() && r.fichiers[k].source.eq_ignore_ascii_case(source)).collect();
-        if idx.is_empty() {
-            continue;
-        }
-        trouve = true;
-        remettre_fichiers(jeu, &dossier, &mut r, &idx, progres, &mut b);
+    for (dossier, mut r, idx) in liste {
+        remettre_fichiers(jeu, &dossier, &mut r, &idx, progres, &mut faits, total, &mut b);
         finir_si_entier(jeu, &dossier, &mut r, &mut b);
         ecrire_retrait(&dossier, &r, copie)?;
     }
-    if !trouve {
-        return Err(Erreur::Introuvable("Ce mod n'est pas parmi les mods retirés.".into()));
-    }
+    progres("remise", total, total);
     Ok(b)
+}
+
+/// Ce que le nouveau rangement d'un ou de tous les mods remis a fait.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct BilanRetraitMod {
+    /// Rangés de nouveau à part (et reconnus à l'arrivée).
+    pub ranges: usize,
+    /// Laissés dans le jeu : ils ne sont plus ceux que Frogtend avait remis (changés, remplacés, lien sur le chemin).
+    pub changes: usize,
+    /// Effacés depuis la remise : notés « partis », ils ne bloquent plus le mod.
+    pub partis: usize,
+    /// Laissés dans le jeu : leur place de rangement est prise.
+    pub places_prises: usize,
+    /// Laissés dans le jeu : Windows a refusé le renommage pour une autre raison.
+    pub erreurs: usize,
+    /// Partis à part mais pas reconnus à l'arrivée, et pas revenus : « coincés à part », proposés à la remise.
+    pub coinces: usize,
+    /// Les mods dont au moins un fichier a été rangé.
+    pub mods: usize,
+}
+
+/// Range de nouveau UN fichier remis : il doit être EXACTEMENT celui que Frogtend a remis (même volume et même index
+/// que notés au retrait), un vrai fichier sans lien sur son chemin, et sa place de rangement libre. Ni le dépôt de
+/// Vortex ni un second lien ne sont exigés (✅ Seb 25/11 : Vortex désinstallé, son dépôt effacé — le dossier du retrait
+/// est alors la SEULE copie des mods). `lire` et `renvoyer` : la relecture à l'arrivée et le retour en arrière (les
+/// vrais en service ; simulés par les essais du cas « coincé à part »).
+fn reranger_un_avec(
+    jeu: &Path,
+    fichiers: &Path,
+    f: &FichierRetire,
+    lire: &dyn Fn(&Path) -> std::io::Result<Identite>,
+    renvoyer: &dyn Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<EtatFichier, Echec> {
+    if rel_sur(&f.rel).as_deref() != Some(f.rel.as_str()) || f.index == 0 {
+        return Err(Echec::Change);
+    }
+    let (origine, arrivee) = (joindre(jeu, &f.rel), joindre(fichiers, &f.rel));
+    let meme = |i: &Identite| (i.volume, i.index) == (f.volume, f.index) && !i.dossier && !i.point_de_reanalyse;
+    if crate::garde::lien_entre(jeu, &origine) {
+        return Err(Echec::Change);
+    }
+    match identite(&origine) {
+        Ok(i) if meme(&i) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Echec::Parti),
+        _ => return Err(Echec::Change),
+    }
+    if std::fs::symlink_metadata(&arrivee).is_ok() {
+        return Err(Echec::PlacePrise);
+    }
+    let parent = arrivee.parent().ok_or(Echec::Change)?;
+    if crate::garde::lien_entre(jeu, fichiers) || !creer_dossiers(jeu, parent) || crate::garde::lien_entre(fichiers, parent) {
+        return Err(Echec::Change);
+    }
+    // Jamais par-dessus : si la place vient d'être prise, le déplacement échoue.
+    deplacer(&origine, &arrivee).map_err(|e| echec_du_renommage(&e))?;
+    match lire(&arrivee) {
+        Ok(a) if meme(&a) => Ok(EtatFichier::Deplace),
+        _ if renvoyer(&arrivee, &origine).is_ok() => Err(Echec::Change),
+        // Il n'a pas pu revenir : il reste à part, et la remise le propose.
+        _ => Ok(EtatFichier::BloqueAPart),
+    }
+}
+
+fn reranger_un(jeu: &Path, fichiers: &Path, f: &FichierRetire) -> Result<EtatFichier, Echec> {
+    reranger_un_avec(jeu, fichiers, f, &identite, &deplacer)
+}
+
+/// Compte l'issue d'un nouveau rangement dans le bilan, et met l'état du fichier à jour.
+fn noter_rangement(f: &mut FichierRetire, issue: Result<EtatFichier, Echec>, b: &mut BilanRetraitMod) -> bool {
+    match issue {
+        Ok(EtatFichier::BloqueAPart) => {
+            f.etat = EtatFichier::BloqueAPart;
+            f.motif = Some(Motif::Change);
+            b.coinces += 1;
+            false
+        }
+        Ok(e) => {
+            f.etat = e;
+            f.motif = None;
+            b.ranges += 1;
+            true
+        }
+        Err(Echec::Parti) => {
+            f.etat = EtatFichier::Parti;
+            f.motif = Some(Motif::Absent);
+            b.partis += 1;
+            false
+        }
+        Err(Echec::PlacePrise) => {
+            b.places_prises += 1;
+            false
+        }
+        Err(Echec::Erreur) => {
+            b.erreurs += 1;
+            false
+        }
+        Err(Echec::Change) => {
+            b.changes += 1;
+            false
+        }
+    }
+}
+
+/// Range de nouveau les fichiers « remis » choisis par `garder` (un mod, ou tous), chacun dans le dossier de SON
+/// retrait, par renommage, après la preuve de `reranger_un`. Rien n'est effacé.
+fn reranger(jeu: &Path, copie: Option<&Path>, garder: &dyn Fn(&FichierRetire) -> bool, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<Option<BilanRetraitMod>> {
+    let liste: Vec<(PathBuf, Retrait, Vec<usize>)> = retraits_recales(jeu, copie)?
+        .into_iter()
+        .map(|(d, r)| {
+            let idx = (0..r.fichiers.len()).filter(|&k| r.fichiers[k].etat == EtatFichier::Remis && garder(&r.fichiers[k])).collect();
+            (d, r, idx)
+        })
+        .filter(|(_, _, idx): &(PathBuf, Retrait, Vec<usize>)| !idx.is_empty())
+        .collect();
+    if liste.is_empty() {
+        return Ok(None);
+    }
+    let total = liste.iter().map(|(_, _, idx)| idx.len() as u64).sum::<u64>();
+    let mut faits = 0u64;
+    progres("retrait", 0, total);
+    let mut b = BilanRetraitMod::default();
+    let mut mods: HashSet<String> = HashSet::new();
+    for (dossier, mut r, idx) in liste {
+        let fichiers = dossier.join("fichiers");
+        if !creer_dossiers(jeu, &fichiers) {
+            return Err(Erreur::Refus("Le dossier du retrait passe par un lien : rien de plus n'est déplacé.".into()));
+        }
+        for k in idx {
+            let issue = reranger_un(jeu, &fichiers, &r.fichiers[k]);
+            if noter_rangement(&mut r.fichiers[k], issue, &mut b) {
+                mods.insert(r.fichiers[k].source.to_lowercase());
+            }
+            faits = (faits + 1).min(total);
+            progres("retrait", faits, total);
+        }
+        ecrire_retrait(&dossier, &r, copie)?;
+    }
+    b.mods = mods.len();
+    progres("retrait", total, total);
+    Ok(Some(b))
+}
+
+/// 🧹 Range de nouveau UN mod remis (`source`) : chaque fichier « remis » de chaque retrait retourne dans le dossier
+/// de CE retrait ; son état redevient « déplacé ». Un fichier qui n'est plus celui remis, ou dont la place est prise,
+/// reste dans le jeu (compté) ; un fichier effacé est noté « parti ». Rien n'est effacé.
+pub fn retirer_mod(jeu: &Path, copie: Option<&Path>, source: &str, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<BilanRetraitMod> {
+    reranger(jeu, copie, &|f| f.source.eq_ignore_ascii_case(source), progres)?.ok_or_else(|| Erreur::Introuvable("Ce mod n'est pas parmi les mods remis dans le jeu.".into()))
+}
+
+/// 🧹 « Tout ranger de nouveau » : chaque mod remis, avec la même preuve (utile sans le dépôt de Vortex, quand son
+/// manifeste n'est plus là pour un retrait global).
+pub fn tout_reranger(jeu: &Path, copie: Option<&Path>, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<BilanRetraitMod> {
+    reranger(jeu, copie, &|_| true, progres)?.ok_or_else(|| Erreur::Refus("Aucun mod remis à ranger de nouveau.".into()))
+}
+
+/// Les fichiers REMIS par Frogtend (chemins relatifs au jeu, en minuscules, `/`) : un mod Frogtend ne se pose jamais
+/// par-dessus (sans le dépôt de Vortex, ils n'ont plus qu'un lien et ne sont plus listés par aucun manifeste).
+pub fn rels_remis(jeu: &Path) -> HashSet<String> {
+    retraits(jeu)
+        .into_iter()
+        .filter(|(_, r)| r.etat != EtatRetrait::ToutRemis)
+        .flat_map(|(_, r)| r.fichiers.into_iter().filter(|f| f.etat == EtatFichier::Remis).map(|f| f.rel.to_lowercase()))
+        .collect()
 }
 
 /// « Tout remettre comme avant » : chaque retrait pas encore tout remis, du plus récent au plus ancien ; chacun rend
 /// ses fichiers, puis son `vortex.deployment.json` seulement s'il est entier et la place libre (sinon Vortex croirait
-/// ses fichiers en place). Un retrait interrompu s'annule ainsi.
+/// ses fichiers en place). Un retrait interrompu s'annule ainsi. La progression compte tous les retraits ensemble.
 pub fn tout_remettre(jeu: &Path, copie: Option<&Path>, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<BilanRemise> {
-    let liste: Vec<(PathBuf, Retrait)> = retraits(jeu).into_iter().rev().filter(|(_, r)| r.etat != EtatRetrait::ToutRemis).collect();
+    let mut liste: Vec<(PathBuf, Retrait)> = retraits(jeu).into_iter().rev().filter(|(_, r)| r.etat != EtatRetrait::ToutRemis).collect();
     if liste.is_empty() {
         return Err(Erreur::Refus("Aucun mod retiré à remettre.".into()));
     }
-    let mut b = BilanRemise::default();
-    for (dossier, mut r) in liste {
-        recaler(jeu, &dossier, &mut r);
+    for (dossier, r) in &mut liste {
+        recaler(jeu, dossier, r);
         // Ceux qu'un retrait interrompu n'avait pas encore déplacés sont restés dans le jeu : rien à remettre.
         for f in &mut r.fichiers {
             if f.etat == EtatFichier::ADeplacer {
@@ -917,11 +1156,18 @@ pub fn tout_remettre(jeu: &Path, copie: Option<&Path>, progres: &(dyn Fn(&'stati
                 f.motif = Some(Motif::Interrompu);
             }
         }
+    }
+    let total = liste.iter().map(|(_, r)| r.fichiers.iter().filter(|f| f.etat.a_part()).count() as u64).sum::<u64>();
+    let mut faits = 0;
+    progres("remise", 0, total);
+    let mut b = BilanRemise::default();
+    for (dossier, mut r) in liste {
         let idx: Vec<usize> = (0..r.fichiers.len()).filter(|&k| r.fichiers[k].etat.a_part()).collect();
-        remettre_fichiers(jeu, &dossier, &mut r, &idx, progres, &mut b);
+        remettre_fichiers(jeu, &dossier, &mut r, &idx, progres, &mut faits, total, &mut b);
         finir_si_entier(jeu, &dossier, &mut r, &mut b);
         ecrire_retrait(&dossier, &r, copie)?;
     }
+    progres("remise", total, total);
     Ok(b)
 }
 
@@ -965,6 +1211,9 @@ pub struct EtatVortex {
     pub retrait: Option<RetraitVu>,
     /// Les mods rangés (remettables), tous retraits confondus.
     pub retires: Vec<ModVortex>,
+    /// Les mods REMIS dans le jeu par Frogtend (au moins un fichier « remis » dans un retrait pas tout remis), avec
+    /// leur nombre de fichiers remis : la partie « 🧩 Dans le jeu », chacun retirable de nouveau.
+    pub remis: Vec<ModVortex>,
     pub diagnostic: Diagnostic,
     /// Les mods (`source`) que le diagnostic désigne.
     pub en_cause: Vec<String>,
@@ -980,7 +1229,11 @@ fn ranger_mods(compte: BTreeMap<String, (String, usize)>) -> Vec<ModVortex> {
 
 /// L'état des mods de Vortex du jeu (lecture seule : rien n'est écrit).
 pub fn etat(jeu: &Path) -> EtatVortex {
-    let liste = retraits(jeu);
+    let mut liste = retraits(jeu);
+    // Le recalage d'une coupure, en mémoire seulement (rien n'est écrit) : l'écran voit l'état vrai du disque.
+    for (d, r) in liste.iter_mut().filter(|(_, r)| r.etat != EtatRetrait::ToutRemis) {
+        recaler(jeu, d, r);
+    }
     // Les journaux d'avant le dernier retrait parlent de mods qui ne sont plus là : ignorés.
     let depuis = liste.iter().rev().find(|(_, r)| r.etat != EtatRetrait::ToutRemis).and_then(|(_, r)| r.commence_le.parse::<u64>().ok());
     let mut e = EtatVortex { diagnostic: diagnostic_depuis(jeu, depuis), ..Default::default() };
@@ -995,7 +1248,7 @@ pub fn etat(jeu: &Path) -> EtatVortex {
                 proprietaire.entry(f.rel.to_lowercase()).or_insert_with(|| f.source.clone());
             }
             // Le nombre annoncé : les fichiers PROUVÉS, comme le retrait les rangera.
-            for f in planifier(jeu, &d).iter().filter(|f| f.etat == EtatFichier::ADeplacer) {
+            for f in planifier(jeu, &d, &|_, _, _| {}).iter().filter(|f| f.etat == EtatFichier::ADeplacer) {
                 e.fichiers += 1;
                 e.octets += f.taille;
             }
@@ -1008,15 +1261,19 @@ pub fn etat(jeu: &Path) -> EtatVortex {
         }
     }
     let mut retires: BTreeMap<String, (String, usize)> = BTreeMap::new();
+    let mut remis: BTreeMap<String, (String, usize)> = BTreeMap::new();
     for (_, r) in liste.iter().filter(|(_, r)| r.etat != EtatRetrait::ToutRemis) {
         for f in &r.fichiers {
             proprietaire.entry(f.rel.to_lowercase()).or_insert_with(|| f.source.clone());
             if f.etat.a_part() {
                 retires.entry(f.source.to_lowercase()).or_insert_with(|| (f.source.clone(), 0)).1 += 1;
+            } else if f.etat == EtatFichier::Remis {
+                remis.entry(f.source.to_lowercase()).or_insert_with(|| (f.source.clone(), 0)).1 += 1;
             }
         }
     }
     e.retires = ranger_mods(retires);
+    e.remis = ranger_mods(remis);
     if let Some((_, r)) = liste.iter().rev().find(|(_, r)| r.etat != EtatRetrait::ToutRemis) {
         let b = bilan_de(r);
         e.retrait = Some(RetraitVu {
@@ -2027,6 +2284,22 @@ mod tests {
     #[ignore]
     fn repetition_reelle_cyberpunk() {
         let jeu = Path::new(r"D:\LaunchBox\Games\GOG Galaxy\Games\Cyberpunk 2077");
+        // Après le vrai retrait de Seb (25/11, 0.227.0) : plus de manifeste dans le jeu, l'état se lit dans retrait.json.
+        if lire_deploiement(jeu).unwrap().is_none() {
+            let e = etat(jeu);
+            eprintln!(
+                "après retrait : retrait {:?}, remis {:?}, retirés {}, mods posés {}, diagnostic {:?}",
+                e.retrait.as_ref().map(|r| (r.en_cours, r.faits, r.total)),
+                e.remis.iter().map(|m| (&m.source, m.fichiers)).collect::<Vec<_>>(),
+                e.retires.len(),
+                e.mods.len(),
+                e.diagnostic
+            );
+            assert!(e.mods.is_empty());
+            assert_eq!(e.remis.len(), 1);
+            assert_eq!(e.retires.len(), 283);
+            return;
+        }
         let d = lire_deploiement(jeu).unwrap().expect("manifeste de Vortex");
         let mut motifs: BTreeMap<String, usize> = BTreeMap::new();
         let mut prouves = 0;
@@ -2046,6 +2319,312 @@ mod tests {
         assert_eq!((prouves, e.fichiers, e.mods.len()), (2014, 2014, 284));
         assert_eq!(motifs.get("LienRompu"), Some(&1));
         assert!(e.retrait.is_none());
+    }
+
+    /// 0.227.1 (défaut 2 vu par Seb le 25/11) : la progression part dès la preuve des fichiers (« vérification », de 0 au
+    /// dernier), puis le rangement compte les fichiers PROUVÉS de 0 à N (« 0 fichier sur 2 014 », jamais les laissés).
+    #[test]
+    fn la_progression_d_un_retrait_part_des_la_verification_et_compte_les_fichiers_prouves() {
+        let mut f = cobaye();
+        // Un lien rompu (laissé) : il est vérifié, mais pas compté dans le rangement.
+        f.mod_("Options-1-1-0-1700000000", "r6/config/options.json", "vortex");
+        let o = f.dans_le_jeu("r6/config/options.json");
+        std::fs::remove_file(&o).unwrap();
+        std::fs::write(&o, "réécrit").unwrap();
+        f.manifeste_normal();
+        let vus = std::sync::Mutex::new(Vec::new());
+        retirer(&f.jeu, None, "100", &|e, n, t| vus.lock().unwrap().push((e, n, t))).unwrap();
+        let vus = vus.into_inner().unwrap();
+        assert_eq!(vus.first(), Some(&("verification", 0, 4)), "la vérification se montre dès le début");
+        assert!(vus.contains(&("verification", 4, 4)));
+        let premier_rangement = vus.iter().position(|v| v.0 == "retrait").unwrap();
+        assert!(vus[..premier_rangement].iter().all(|v| v.0 == "verification"));
+        assert_eq!(vus[premier_rangement], ("retrait", 0, 3), "le rangement part de 0 sur les 3 prouvés");
+        assert_eq!(vus.last(), Some(&("retrait", 3, 3)));
+    }
+
+    /// 0.227.1 (défaut 1 vu par Seb le 25/11) : un mod REMIS est dans `remis` (partie « 🧩 Dans le jeu »), avec son
+    /// nombre de fichiers ; « 🧹 Retirer » le range de nouveau dans le MÊME dossier du retrait, par renommage (même
+    /// fichier, liens gardés), et il redevient remettable.
+    #[test]
+    fn un_mod_remis_est_dans_le_jeu_et_se_retire_de_nouveau() {
+        let f = cobaye();
+        let avant = f.photo_depot();
+        let axl = "ArchiveXL-4198-1-21-1-1737797101";
+        let rel = "red4ext/plugins/ArchiveXL/ArchiveXL.dll";
+        let index = identite(&f.dans_le_jeu(rel)).unwrap().index;
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        assert!(etat(&f.jeu).remis.is_empty());
+        remettre_mod(&f.jeu, None, axl, RIEN).unwrap();
+        let e = etat(&f.jeu);
+        assert_eq!(e.remis.iter().map(|m| (m.nom.as_str(), m.fichiers)).collect::<Vec<_>>(), [("ArchiveXL", 2)]);
+        assert!(!e.retires.iter().any(|m| m.source == axl), "un mod remis n'est plus parmi les retirés");
+        let vus = std::sync::Mutex::new(Vec::new());
+        let b = retirer_mod(&f.jeu, None, axl, &|e, n, t| vus.lock().unwrap().push((e, n, t))).unwrap();
+        assert_eq!(b, BilanRetraitMod { ranges: 2, mods: 1, ..Default::default() });
+        assert_eq!(vus.lock().unwrap().last(), Some(&("retrait", 2, 2)));
+        assert!(!f.dans_le_jeu(rel).exists());
+        let a = identite(&f.range(rel)).unwrap();
+        assert_eq!((a.index, a.liens), (index, 2), "le même fichier, renommé, jamais copié");
+        let (_, r) = retraits(&f.jeu).pop().unwrap();
+        assert_eq!(retraits(&f.jeu).len(), 1, "le même dossier du retrait");
+        assert!(r.fichiers.iter().filter(|x| x.source == axl).all(|x| x.etat == EtatFichier::Deplace));
+        let e = etat(&f.jeu);
+        assert!(e.remis.is_empty());
+        assert_eq!(e.retires.iter().find(|m| m.source == axl).map(|m| m.fichiers), Some(2));
+        assert_eq!(f.photo_depot(), avant, "le dépôt de Vortex n'est jamais modifié");
+        // Plus rien de ce mod à ranger : introuvable ; et il se remet de nouveau.
+        assert!(matches!(retirer_mod(&f.jeu, None, axl, RIEN), Err(Erreur::Introuvable(_))));
+        assert_eq!(remettre_mod(&f.jeu, None, axl, RIEN).unwrap().remis, 2);
+        assert_eq!(liens(&f.dans_le_jeu(rel)), Some(2));
+    }
+
+    /// Un fichier remis qui n'est plus celui que Frogtend a remis (réécrit), ou dont la place de rangement est prise,
+    /// reste dans le jeu, compté ; les autres fichiers du mod sont rangés.
+    #[test]
+    fn retirer_un_mod_remis_laisse_un_fichier_change_ou_une_place_prise() {
+        let f = cobaye();
+        let axl = "ArchiveXL-4198-1-21-1-1737797101";
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        remettre_mod(&f.jeu, None, axl, RIEN).unwrap();
+        // Réécrit par la personne (un autre fichier, même nom).
+        let dll = f.dans_le_jeu("red4ext/plugins/ArchiveXL/ArchiveXL.dll");
+        std::fs::remove_file(&dll).unwrap();
+        std::fs::write(&dll, "autre").unwrap();
+        // La place de rangement de l'autre fichier, prise.
+        let place = f.range("red4ext/plugins/ArchiveXL/Bundle/a.yaml");
+        std::fs::create_dir_all(place.parent().unwrap()).unwrap();
+        std::fs::write(&place, "déjà là").unwrap();
+        let b = retirer_mod(&f.jeu, None, axl, RIEN).unwrap();
+        assert_eq!(b, BilanRetraitMod { changes: 1, places_prises: 1, ..Default::default() });
+        assert_eq!(std::fs::read_to_string(&dll).unwrap(), "autre");
+        assert_eq!(std::fs::read_to_string(&place).unwrap(), "déjà là");
+        assert!(f.dans_le_jeu("red4ext/plugins/ArchiveXL/Bundle/a.yaml").is_file());
+        assert_eq!(etat(&f.jeu).remis.len(), 1, "toujours dans le jeu");
+    }
+
+    /// ✅ Seb 25/11 : Vortex désinstallé et son DÉPÔT EFFACÉ — les fichiers rangés n'ont plus qu'un lien, le dossier du
+    /// retrait est leur seule copie. Remettre puis retirer de nouveau marchent sans le dépôt ; le manifeste de Vortex ne
+    /// revient pas (il ne mènerait nulle part) ; le dossier du retrait n'est jamais effacé.
+    #[test]
+    fn sans_le_depot_de_vortex_remettre_puis_retirer_de_nouveau_marchent() {
+        let f = cobaye();
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        std::fs::remove_dir_all(&f.depot).unwrap();
+        let rel = "bin/x64/version.dll";
+        assert_eq!(liens(&f.range(rel)), Some(1));
+        let cet = "CET 1.35.0 - Patch 2.21-107-1-35-0-1737654030";
+        let axl = "ArchiveXL-4198-1-21-1-1737797101";
+        assert_eq!(remettre_mod(&f.jeu, None, axl, RIEN).unwrap().remis, 2);
+        let b = remettre_mod(&f.jeu, None, cet, RIEN).unwrap();
+        assert_eq!((b.remis, b.deploiement_remis), (1, false), "sans dépôt, le manifeste de Vortex reste rangé");
+        assert!(!f.jeu.join(MANIFESTE_VORTEX).exists());
+        assert_eq!((std::fs::read_to_string(f.dans_le_jeu(rel)).unwrap().as_str(), liens(&f.dans_le_jeu(rel))), ("cet", Some(1)));
+        let e = etat(&f.jeu);
+        assert!(!e.present && e.refus.is_none());
+        assert_eq!(e.remis.len(), 2, "tous les mods remis restent visibles, dans le jeu");
+        assert_eq!(retirer_mod(&f.jeu, None, cet, RIEN).unwrap().ranges, 1);
+        assert_eq!(std::fs::read_to_string(f.range(rel)).unwrap(), "cet");
+        assert!(!f.dans_le_jeu(rel).exists());
+        // Tout remettre, sans dépôt : tout revient, le manifeste et le dossier du retrait restent.
+        let b = tout_remettre(&f.jeu, None, RIEN).unwrap();
+        assert_eq!((b.remis, b.deploiement_remis), (1, false));
+        let (d, r) = retraits(&f.jeu).pop().unwrap();
+        assert_eq!(r.etat, EtatRetrait::Fini);
+        assert!(d.join(NOM_RETRAIT).is_file() && d.join(MANIFESTE_VORTEX).is_file());
+        assert_eq!(etat(&f.jeu).remis.len(), 2);
+    }
+
+    /// I4 : une coupure pendant « 🧹 Retirer » un mod remis, juste APRÈS le renommage et AVANT l'écriture du retrait :
+    /// l'état le voit déjà rangé (recalage en mémoire), la remise suivante le recale, l'écrit, et le rend.
+    #[test]
+    fn une_coupure_pendant_le_retrait_d_un_mod_remis_ne_le_laisse_pas_coince() {
+        let f = cobaye();
+        let cet = "CET 1.35.0 - Patch 2.21-107-1-35-0-1737654030";
+        let rel = "bin/x64/version.dll";
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        remettre_mod(&f.jeu, None, cet, RIEN).unwrap();
+        // La coupure : le fichier rangé à la main, retrait.json toujours « remis ».
+        std::fs::create_dir_all(f.range(rel).parent().unwrap()).unwrap();
+        std::fs::rename(f.dans_le_jeu(rel), f.range(rel)).unwrap();
+        let (d, r) = retraits(&f.jeu).pop().unwrap();
+        assert_eq!(r.fichiers.iter().find(|x| x.rel == rel).unwrap().etat, EtatFichier::Remis);
+        let e = etat(&f.jeu);
+        assert!(e.remis.is_empty(), "l'écran le voit déjà rangé");
+        assert!(e.retires.iter().any(|m| m.source == cet));
+        assert!(matches!(retirer_mod(&f.jeu, None, cet, RIEN), Err(Erreur::Introuvable(_))));
+        // « 🧹 » a déjà réécrit le retrait recalé : plus jamais coincé.
+        assert_eq!(lire_retrait(&d).unwrap().fichiers.iter().find(|x| x.rel == rel).unwrap().etat, EtatFichier::Deplace);
+        assert_eq!(remettre_mod(&f.jeu, None, cet, RIEN).unwrap().remis, 1);
+        assert_eq!(std::fs::read_to_string(f.dans_le_jeu(rel)).unwrap(), "cet");
+    }
+
+    /// m4 : un fichier remis puis effacé par la personne est noté « parti » ; son mod sort de « Dans le jeu » quand plus
+    /// aucun de ses fichiers n'y est. L'état le voit dès l'effacement.
+    #[test]
+    fn un_fichier_remis_puis_efface_est_parti_et_ne_bloque_plus_le_mod() {
+        let f = cobaye();
+        let axl = "ArchiveXL-4198-1-21-1-1737797101";
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        remettre_mod(&f.jeu, None, axl, RIEN).unwrap();
+        std::fs::remove_file(f.dans_le_jeu("red4ext/plugins/ArchiveXL/Bundle/a.yaml")).unwrap();
+        assert_eq!(etat(&f.jeu).remis.iter().map(|m| m.fichiers).collect::<Vec<_>>(), [1], "un seul fichier encore dans le jeu");
+        let b = retirer_mod(&f.jeu, None, axl, RIEN).unwrap();
+        assert_eq!((b.ranges, b.partis), (1, 0), "le parti a été recalé avant : il n'est plus à ranger");
+        let (_, r) = retraits(&f.jeu).pop().unwrap();
+        assert_eq!(r.fichiers.iter().find(|x| x.rel.ends_with("a.yaml")).unwrap().etat, EtatFichier::Parti);
+        // Tous les fichiers effacés : le mod sort de « Dans le jeu ».
+        remettre_mod(&f.jeu, None, axl, RIEN).unwrap();
+        std::fs::remove_file(f.dans_le_jeu("red4ext/plugins/ArchiveXL/ArchiveXL.dll")).unwrap();
+        assert!(etat(&f.jeu).remis.is_empty());
+        assert!(matches!(retirer_mod(&f.jeu, None, axl, RIEN), Err(Erreur::Introuvable(_))));
+        // reranger_un, s'il croise un fichier parti, le dit « parti ».
+        let x = FichierRetire { rel: "absent.dll".into(), source: axl.into(), taille: 1, volume: 1, index: 2, etat: EtatFichier::Remis, motif: None };
+        assert_eq!(reranger_un(&f.jeu, &f.jeu.join("Frogtend").join("x"), &x), Err(Echec::Parti));
+    }
+
+    /// m7 : une jonction sur le chemin du fichier remis, ou dans le dossier du rangement : rien ne bouge.
+    #[test]
+    fn retirer_un_mod_remis_refuse_une_jonction_sur_le_chemin_ou_dans_le_rangement() {
+        let f = cobaye();
+        let axl = "ArchiveXL-4198-1-21-1-1737797101";
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        remettre_mod(&f.jeu, None, axl, RIEN).unwrap();
+        let (d, r) = retraits(&f.jeu).pop().unwrap();
+        let fichiers = d.join("fichiers");
+        let x = r.fichiers.iter().find(|x| x.rel == "red4ext/plugins/ArchiveXL/ArchiveXL.dll").unwrap().clone();
+        // Dans le rangement : `fichiers\red4ext` devient une jonction vers ailleurs.
+        let dehors = f._d.path().join("dehors");
+        std::fs::create_dir_all(&dehors).unwrap();
+        let _ = std::fs::remove_dir_all(fichiers.join("red4ext"));
+        let j = fichiers.join("red4ext");
+        let ok = std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&j).arg(&dehors).output().is_ok_and(|o| o.status.success());
+        if !ok {
+            eprintln!("jonction impossible ici : test sauté");
+            return;
+        }
+        assert_eq!(reranger_un(&f.jeu, &fichiers, &x), Err(Echec::Change));
+        assert!(f.dans_le_jeu(&x.rel).is_file() && std::fs::read_dir(&dehors).unwrap().next().is_none(), "rien de l'autre côté");
+        std::fs::remove_dir(&j).unwrap();
+        // Sur le chemin du fichier dans le jeu : `red4ext\plugins` remplacé par une jonction vers le vrai dossier.
+        let vrai = f._d.path().join("vrai plugins");
+        std::fs::rename(f.jeu.join("red4ext").join("plugins"), &vrai).unwrap();
+        let j = f.jeu.join("red4ext").join("plugins");
+        assert!(std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&j).arg(&vrai).output().unwrap().status.success());
+        assert_eq!(reranger_un(&f.jeu, &fichiers, &x), Err(Echec::Change));
+        let b = retirer_mod(&f.jeu, None, axl, RIEN).unwrap();
+        assert_eq!((b.ranges, b.changes), (0, 2));
+        assert!(vrai.join("ArchiveXL").join("ArchiveXL.dll").is_file(), "rien n'a bougé");
+        std::fs::remove_dir(&j).unwrap();
+    }
+
+    /// m7 / m3 : un fichier parti à part mais pas reconnu à l'arrivée, et qui ne peut pas revenir, est « coincé à
+    /// part » : compté à part, jamais parmi les rangés, et proposé à la remise.
+    #[test]
+    fn un_fichier_coince_a_part_est_compte_a_part() {
+        let f = cobaye();
+        let cet = "CET 1.35.0 - Patch 2.21-107-1-35-0-1737654030";
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        remettre_mod(&f.jeu, None, cet, RIEN).unwrap();
+        let (d, mut r) = retraits(&f.jeu).pop().unwrap();
+        let fichiers = d.join("fichiers");
+        let k = r.fichiers.iter().position(|x| x.rel == "bin/x64/version.dll").unwrap();
+        let autre = |_: &Path| -> std::io::Result<Identite> { Ok(Identite { volume: 0, index: 1, liens: 1, point_de_reanalyse: false, dossier: false, taille: 0 }) };
+        let refus = |_: &Path, _: &Path| -> std::io::Result<()> { Err(std::io::Error::from_raw_os_error(5)) };
+        let issue = reranger_un_avec(&f.jeu, &fichiers, &r.fichiers[k], &autre, &refus);
+        assert_eq!(issue, Ok(EtatFichier::BloqueAPart));
+        let mut b = BilanRetraitMod::default();
+        assert!(!noter_rangement(&mut r.fichiers[k], issue, &mut b));
+        assert_eq!((b.ranges, b.coinces), (0, 1));
+        assert_eq!(r.fichiers[k].etat, EtatFichier::BloqueAPart);
+        ecrire_retrait(&d, &r, None).unwrap();
+        assert!(etat(&f.jeu).retires.iter().any(|m| m.source == cet), "proposé à la remise");
+        // Un retour possible : « changé », le fichier revient dans le jeu.
+        let (_, r2) = retraits(&f.jeu).pop().unwrap();
+        assert_eq!(remettre_mod(&f.jeu, None, cet, RIEN).unwrap().remis, 1);
+        let _ = r2;
+        let (_, r) = retraits(&f.jeu).pop().unwrap();
+        let ok = |a: &Path, b: &Path| deplacer(a, b);
+        assert_eq!(reranger_un_avec(&f.jeu, &fichiers, &r.fichiers[k], &autre, &ok), Err(Echec::Change));
+        assert!(f.dans_le_jeu("bin/x64/version.dll").is_file());
+    }
+
+    /// I2 : sans le dépôt de Vortex, après « tout remettre », « 🧹 Tout ranger de nouveau » range chaque mod remis.
+    #[test]
+    fn tout_ranger_de_nouveau_range_chaque_mod_remis_sans_le_depot() {
+        let f = cobaye();
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        std::fs::remove_dir_all(&f.depot).unwrap();
+        tout_remettre(&f.jeu, None, RIEN).unwrap();
+        assert_eq!(etat(&f.jeu).remis.len(), 2);
+        let vus = std::sync::Mutex::new(Vec::new());
+        let b = tout_reranger(&f.jeu, None, &|e, n, t| vus.lock().unwrap().push((e, n, t))).unwrap();
+        assert_eq!(b, BilanRetraitMod { ranges: 3, mods: 2, ..Default::default() });
+        assert_eq!(vus.lock().unwrap().first(), Some(&("retrait", 0, 3)));
+        assert_eq!(vus.lock().unwrap().last(), Some(&("retrait", 3, 3)));
+        let e = etat(&f.jeu);
+        assert!(e.remis.is_empty() && e.retires.len() == 2);
+        assert!(matches!(tout_reranger(&f.jeu, None, RIEN), Err(Erreur::Refus(_))));
+    }
+
+    /// m1 : le manifeste de Vortex ne revient que si au moins un fichier se prouve encore dans son dépôt.
+    #[test]
+    fn le_manifeste_ne_revient_que_si_le_depot_tient_encore_le_retrait() {
+        let f = cobaye();
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        // Le dossier du dépôt existe toujours, mais vidé de ces mods.
+        for e in std::fs::read_dir(&f.depot).unwrap().flatten() {
+            std::fs::remove_dir_all(e.path()).unwrap();
+        }
+        let b = tout_remettre(&f.jeu, None, RIEN).unwrap();
+        assert_eq!((b.remis, b.deploiement_remis), (3, false));
+        assert!(!f.jeu.join(MANIFESTE_VORTEX).exists());
+        assert_eq!(retraits(&f.jeu).pop().unwrap().1.etat, EtatRetrait::Fini);
+    }
+
+    /// m6 : la progression d'une remise sur plusieurs retraits compte un total GLOBAL, de 0 à la fin.
+    #[test]
+    fn la_progression_d_une_remise_sur_plusieurs_retraits_est_globale() {
+        let mut f = cobaye();
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        f.fichiers.clear();
+        f.mod_("Nouveau-5-1-1700000000", "archive/pc/mod/nouveau.archive", "n");
+        f.manifeste_normal();
+        retirer(&f.jeu, None, "200", RIEN).unwrap();
+        let vus = std::sync::Mutex::new(Vec::new());
+        tout_remettre(&f.jeu, None, &|e, n, t| vus.lock().unwrap().push((e, n, t))).unwrap();
+        let vus = vus.into_inner().unwrap();
+        assert_eq!(vus.first(), Some(&("remise", 0, 4)));
+        assert!(vus.iter().all(|v| v.2 == 4), "{vus:?}");
+        assert_eq!(vus.iter().filter(|v| v.1 == 4).count() >= 1, true);
+        assert_eq!(vus.last(), Some(&("remise", 4, 4)));
+    }
+
+    /// m5 : relu, un fichier « remis » à la source douteuse est tenu pour laissé (jamais suivi).
+    #[test]
+    fn la_relecture_verifie_la_source_d_un_fichier_remis() {
+        let f = cobaye();
+        retirer(&f.jeu, None, "100", RIEN).unwrap();
+        let (d, mut r) = retraits(&f.jeu).pop().unwrap();
+        r.fichiers[0].etat = EtatFichier::Remis;
+        r.fichiers[0].source = r"..\ailleurs".into();
+        std::fs::write(d.join(NOM_RETRAIT), serde_json::to_vec(&r).unwrap()).unwrap();
+        let x = &lire_retrait(&d).unwrap().fichiers[0];
+        assert_eq!((x.etat, x.motif), (EtatFichier::Laisse, Some(Motif::CheminDangereux)));
+    }
+
+    /// m2 : « place prise » seulement pour les refus « existe déjà » de Windows ; tout autre refus est une erreur.
+    #[test]
+    fn seul_un_refus_existe_deja_est_une_place_prise() {
+        for (code, attendu) in [(183, Echec::PlacePrise), (80, Echec::PlacePrise), (5, Echec::Erreur), (32, Echec::Erreur)] {
+            assert_eq!(echec_du_renommage(&std::io::Error::from_raw_os_error(code)), attendu, "{code}");
+        }
+        // Un vrai renommage par-dessus un fichier : refusé « existe déjà ».
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("a"), "a").unwrap();
+        std::fs::write(d.path().join("b"), "b").unwrap();
+        let e = deplacer(&d.path().join("a"), &d.path().join("b")).unwrap_err();
+        assert_eq!(echec_du_renommage(&e), Echec::PlacePrise, "{e:?}");
     }
 
     #[test]

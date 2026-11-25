@@ -575,6 +575,8 @@ pub fn run() {
             commandes::mods_vortex_reprendre,
             commandes::mods_vortex_remettre,
             commandes::mods_vortex_tout_remettre,
+            commandes::mods_vortex_retirer_mod,
+            commandes::mods_vortex_tout_ranger,
             commandes::nexus_etat,
             commandes::nexus_regler,
             commandes::nexus_oublier,

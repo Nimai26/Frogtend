@@ -258,6 +258,8 @@ export interface EtatVortex {
   octets: number;
   retrait: { en_cours: boolean; faits: number; total: number; laisses: number; laisses_rompus: number; sauvegardes_vortex: number } | null;
   retires: ModVortex[];
+  /** 0.227.1 : les mods REMIS dans le jeu par Frogtend (partie « 🧩 Dans le jeu »), avec leur nombre de fichiers remis. */
+  remis: ModVortex[];
   diagnostic: DiagnosticVortex;
   /** Les `source` des mods que le diagnostic désigne. */
   en_cause: string[];
@@ -281,7 +283,25 @@ export interface BilanRemiseVortex {
   remis: number;
   places_prises: number;
   changes: number;
+  /** Windows a refusé le renommage pour une autre raison (0.227.1). */
+  erreurs?: number;
   deploiement_remis: boolean;
+}
+
+/** 0.227.1 : ce que le retrait d'UN mod remis a fait. */
+export interface BilanRetraitModVortex {
+  ranges: number;
+  /** Plus ceux que Frogtend avait remis (changés, remplacés, lien sur le chemin). */
+  changes: number;
+  /** Effacés depuis la remise (ils ne bloquent plus le mod). */
+  partis: number;
+  places_prises: number;
+  /** Windows a refusé le renommage pour une autre raison. */
+  erreurs: number;
+  /** Partis à part sans être reconnus : proposés à la remise. */
+  coinces: number;
+  /** Les mods dont au moins un fichier a été rangé. */
+  mods: number;
 }
 
 export interface EmulateurRecommande {
@@ -1471,6 +1491,10 @@ export const api = {
   /** Lot M1 : remet UN mod retiré (`source` tel que l'état l'a donné). */
   modsVortexRemettre: (id: number, source: string, suivi: number) => appeler<BilanRemiseVortex>('mods_vortex_remettre', { id, source, suivi }),
   modsVortexToutRemettre: (id: number, suivi: number) => appeler<BilanRemiseVortex>('mods_vortex_tout_remettre', { id, suivi }),
+  /** 0.227.1 : range de nouveau UN mod remis dans le jeu (`source` tel que l'état l'a donné dans `remis`). */
+  modsVortexRetirerMod: (id: number, source: string, suivi: number) => appeler<BilanRetraitModVortex>('mods_vortex_retirer_mod', { id, source, suivi }),
+  /** 0.227.1 : range de nouveau TOUS les mods remis (sans le dépôt de Vortex, plus de retrait global possible). */
+  modsVortexToutRanger: (id: number, suivi: number) => appeler<BilanRetraitModVortex>('mods_vortex_tout_ranger', { id, suivi }),
   tricheInstaller: (id: number, cle: string, programme: string, ligne: string) =>
     appeler<string>('triche_installer', { id, cle, programme, ligne }),
   jeuTailleInstallation: (id: number) => appeler<number>('jeu_taille_installation', { id }),

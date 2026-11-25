@@ -7,19 +7,30 @@ import { chiffresMod, ETAPE_MOD, pourcentMod, type ProgresMod } from './mods';
 
 let prochain = 0;
 
+/** Ce qu'on sait AVANT le premier événement du cœur (étape et total connus de l'écran). */
+export type DepartProgres = Pick<ProgresMod, 'etape' | 'total'> & { faits?: number };
+
+/** L'état montré pour un événement (ou pour le départ). */
+export function etatProgres(p: Omit<ProgresMod, 'suivi'>, approx: boolean) {
+  return { etape: ETAPE_MOD[p.etape] ?? '', chiffres: chiffresMod({ suivi: 0, ...p }, approx && p.etape === 'telechargement'), pourcent: pourcentMod({ suivi: 0, ...p }) };
+}
+
 /** Lance `travail(suivi)` en montrant sa progression ; le message et l'écoute s'arrêtent quoi qu'il arrive.
- * `approx` : le total annoncé est arrondi (Nexus). */
-export async function avecProgres<T>(message: string, approx: boolean, travail: (suivi: number) => Promise<T>): Promise<T> {
+ * `approx` : le total annoncé est arrondi (Nexus). `depart` (0.227.1, défaut vu par Seb le 25/11) : l'étape et le total
+ * connus d'avance, montrés tout de suite (« 0 fichier sur 2 014 ») — le cœur ne parle qu'une fois le jeu vérifié et
+ * les parties à l'abri, jamais une barre muette d'ici là. */
+export async function avecProgres<T>(message: string, approx: boolean, travail: (suivi: number) => Promise<T>, depart?: DepartProgres): Promise<T> {
   const suivi = ++prochain;
   let t = 0;
   // L'écoute d'abord (un échec la remplace par rien) : le message, qui ne se ferme pas au clic, n'est créé qu'ensuite.
   const arreter = isTauri()
     ? await listen<ProgresMod>('mod-progres', (e) => {
         if (e.payload.suivi !== suivi) return;
-        majProgres(t, { etape: ETAPE_MOD[e.payload.etape] ?? '', chiffres: chiffresMod(e.payload, approx && e.payload.etape === 'telechargement'), pourcent: pourcentMod(e.payload) });
+        majProgres(t, etatProgres(e.payload, approx));
       }).catch(() => () => {})
     : () => {};
   t = toastProgres(message);
+  if (depart && depart.total > 0) majProgres(t, etatProgres({ etape: depart.etape, total: depart.total, faits: Math.min(depart.faits ?? 0, depart.total), debit: 0 }, approx));
   try {
     return await travail(suivi);
   } finally {

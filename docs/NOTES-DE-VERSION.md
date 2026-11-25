@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.227.1 — 🧩 Les mods remis se voient
+
+- Nouveau : une partie « 🧩 Dans le jeu » liste les mods remis, chacun avec « 🧹 Retirer » pour le ranger de nouveau,
+  et « 🧹 Tout ranger de nouveau » pour tous. Ça marche même quand le dossier de Vortex a été supprimé.
+- La barre de progression montre l'étape et le compteur dès le départ (« Vérification des fichiers des mods »,
+  puis « N fichiers sur 2 014 »).
+- Quand les boutons sont grisés (GOG Galaxy ou Vortex ouvert, jeu en cours), la raison s'affiche juste au-dessus des
+  listes, avec « 🔁 C'est fait, revérifier ».
+- Les messages disent ce qui s'est vraiment passé (« resté dans le jeu », « en partie retiré »).
+- Plus sûr : Frogtend n'installe jamais un mod par-dessus un mod remis, et refuse de « retirer du PC » un jeu qui garde
+  des mods rangés (c'en est la seule copie).
+- Les listes se parcourent à la manette dans Taodbox, même quand les boutons sont grisés.
+
 ## 0.227.0 — 🧩 Les mods de Vortex retirés proprement (jeux PC)
 
 - Nouveau : sur la fiche d'un jeu PC dont les mods ont été posés par Vortex, un bloc « 🧩 Mods » dit ce qui cloche

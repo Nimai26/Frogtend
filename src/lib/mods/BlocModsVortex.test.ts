@@ -17,6 +17,7 @@ function etatVortex(x: Partial<EtatVortex> = {}): EtatVortex {
     octets: 4.1 * 1024 ** 3,
     retrait: null,
     retires: [],
+    remis: [],
     diagnostic: {
       version: '2.50',
       version_precedente: '2.21',
@@ -37,6 +38,8 @@ const retirer = vi.fn(async (..._a: unknown[]) => ({ deplaces: 2014, laisses: 1,
 const reprendre = vi.fn(async (..._a: unknown[]) => ({ deplaces: 2014, laisses: 1, laisses_rompus: 1, mods: 284, octets: 1, dossiers_retires: 449, sauvegardes_vortex: 1, deploiement_range: true }));
 const remettre = vi.fn(async (..._a: unknown[]) => ({ remis: 12, places_prises: 0, changes: 0, deploiement_remis: false }));
 const toutRemettre = vi.fn(async (..._a: unknown[]) => ({ remis: 2014, places_prises: 0, changes: 0, deploiement_remis: true }));
+const retirerMod = vi.fn(async (..._a: unknown[]) => ({ ranges: 3, changes: 0, partis: 0, places_prises: 0, erreurs: 0, coinces: 0, mods: 1 }));
+const toutRanger = vi.fn(async (..._a: unknown[]) => ({ ranges: 5, changes: 0, partis: 0, places_prises: 0, erreurs: 0, coinces: 0, mods: 2 }));
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${(o / 1024 ** 3).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Go`,
   estErreurCoeur: (e: unknown) => typeof e === 'object' && e !== null && 'sorte' in e,
@@ -46,6 +49,8 @@ vi.mock('$lib/api', () => ({
     modsVortexReprendre: (...a: unknown[]) => reprendre(...a),
     modsVortexRemettre: (...a: unknown[]) => remettre(...a),
     modsVortexToutRemettre: (...a: unknown[]) => toutRemettre(...a),
+    modsVortexRetirerMod: (...a: unknown[]) => retirerMod(...a),
+    modsVortexToutRanger: (...a: unknown[]) => toutRanger(...a),
   },
 }));
 const confirmer = vi.fn(async (..._a: unknown[]) => true);
@@ -61,9 +66,12 @@ const abri = vi.fn(async (_id: number, op: string, faire: () => Promise<unknown>
   return faire();
 });
 vi.mock('$lib/parties/abriAvant', () => ({ avecAbriAvant: (...a: unknown[]) => abri(...(a as Parameters<typeof abri>)) }));
+/** Le départ de la progression donné à `avecProgres` (0.227.1 : montré avant le premier événement du cœur). */
+const departs: unknown[] = [];
 vi.mock('./progres.svelte', () => ({
-  avecProgres: async (message: string, _approx: boolean, travail: (s: number) => Promise<unknown>) => {
+  avecProgres: async (message: string, _approx: boolean, travail: (s: number) => Promise<unknown>, depart?: unknown) => {
     etapes.push(`progres ${message}`);
+    departs.push(depart);
     return travail(42);
   },
 }));
@@ -93,7 +101,8 @@ beforeEach(() => {
   reponse = etatVortex();
   enPartie = false;
   etapes.length = 0;
-  for (const f of [lire, retirer, reprendre, remettre, toutRemettre, confirmer, toast, abri]) f.mockClear();
+  departs.length = 0;
+  for (const f of [lire, retirer, reprendre, remettre, toutRemettre, retirerMod, toutRanger, confirmer, toast, abri]) f.mockClear();
   lire.mockImplementation(async () => structuredClone(reponse));
   confirmer.mockImplementation(async () => true);
   document.documentElement.removeAttribute('data-taodbox');
@@ -208,6 +217,8 @@ describe('le bloc des mods de Vortex', () => {
     expect(o.message).toContain('désinstalle Vortex');
     expect(etapes).toEqual(['abri avant_mod true', 'progres 🧹 Retrait des mods de Vortex (ne ferme pas Frogtend)']);
     expect(retirer).toHaveBeenCalledWith(7, 42);
+    // 0.227.1 : la barre dit tout de suite l'étape et le total (les fichiers des mods listés : 12 + 9 + 282 × 7).
+    expect(departs).toEqual([{ etape: 'verification', total: 12 + 9 + 282 * 7 }]);
     expect(toast.mock.calls[0][0]).toBe(
       '✅ 284 mods retirés. 1 fichier laissé tel quel : il ne menait plus nulle part. Désinstalle maintenant Vortex (Paramètres de Windows ▸ Applications ▸ Vortex ▸ Désinstaller) : s’il est rouvert, il remet ses mods.',
     );
@@ -245,6 +256,7 @@ describe('le bloc des mods de Vortex', () => {
     expect(o.danger).toBeFalsy();
     expect(o.message).toBe('« ArchiveXL » revient dans le jeu (12 fichiers). Il ne marche peut-être pas avec la version 2.50.');
     expect(remettre).toHaveBeenCalledWith(7, 'ArchiveXL-4198-1-21-1-1737797101', 42);
+    expect(departs).toEqual([{ etape: 'remise', total: 12 }]);
     expect(etapes[0]).toBe('abri avant_mod true');
     expect(lire).toHaveBeenCalledTimes(2);
   });
@@ -303,6 +315,145 @@ describe('le bloc des mods de Vortex', () => {
     await ouvrir();
     expect(document.body.textContent).toContain('attends la fin');
     expect((screen.getByRole('button', { name: /Retirer les mods de Vortex/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // --- 0.227.1 (retours de Seb du 25/11) ---
+
+  const APRES = { en_cours: false, faits: 2015, total: 2015, laisses: 1, laisses_rompus: 1, sauvegardes_vortex: 0 };
+
+  it('un mod REMIS apparaît dans « 🧩 Dans le jeu » et se retire de nouveau, par le même enchaînement', async () => {
+    const bh = m('(4k) Immersive Bullet Holes', 3, 'BH-15309');
+    reponse = etatVortex({ present: false, mods: [], retires: retire(283), remis: [bh], retrait: APRES });
+    const entete = await ouvrir();
+    expect(entete.textContent).toContain('283 mods retirés de Vortex · 1 mod remis dans le jeu');
+    expect(document.body.textContent).toContain('🧩 Dans le jeu (1)');
+    const ligne = document.querySelector<HTMLElement>('li[data-cle="jeu:BH-15309"]')!;
+    expect(ligne.querySelector('.nom')?.textContent).toBe('(4k) Immersive Bullet Holes');
+    expect(ligne.textContent).toContain('3 fichiers');
+    const b = screen.getByRole('button', { name: 'Retirer (4k) Immersive Bullet Holes' });
+    reponse = etatVortex({ present: false, mods: [], retires: [...retire(283), bh], remis: [], retrait: APRES });
+    b.focus();
+    await fireEvent.click(b);
+    await attendre();
+    const [titre, o] = confirmer.mock.calls[0] as [string, { message: string; danger: boolean; libelleValider: string }];
+    expect(titre).toBe('🧹 Retirer « (4k) Immersive Bullet Holes » ?');
+    expect(o.danger).toBe(true);
+    expect(o.message).toContain('Rien n’est effacé');
+    expect(etapes).toEqual(['abri avant_mod true', 'progres 🧹 Retrait de « (4k) Immersive Bullet Holes » (ne ferme pas Frogtend)']);
+    expect(departs).toEqual([{ etape: 'retrait', total: 3 }]);
+    expect(retirerMod).toHaveBeenCalledWith(7, 'BH-15309', 42);
+    expect(toast).toHaveBeenCalledWith('✅ « (4k) Immersive Bullet Holes » retiré du jeu (3 fichiers rangés).', 'ok');
+    expect(lire).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).not.toContain('🧩 Dans le jeu');
+    // Le focus n'est jamais perdu en haut de la page.
+    expect(document.activeElement?.isConnected).toBe(true);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('un « non » au retrait d’un mod remis : rien ne part', async () => {
+    confirmer.mockImplementation(async () => false);
+    reponse = etatVortex({ present: false, mods: [], retires: [], remis: [m('A', 2, 'A-1')], retrait: APRES });
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('button', { name: 'Retirer A' }));
+    await attendre();
+    expect(abri).not.toHaveBeenCalled();
+    expect(retirerMod).not.toHaveBeenCalled();
+  });
+
+  it('Galaxy ouvert après le retrait : le motif et « revérifier » UNE fois, collés aux listes, et chaque bouton grisé le désigne', async () => {
+    reponse = etatVortex({ present: false, mods: [], retires: retire(30), remis: [m('A', 2, 'A-1')], retrait: APRES, verrou: 'galaxy' });
+    await ouvrir();
+    const motifs = [...document.querySelectorAll<HTMLElement>('p')].filter((p) => p.textContent?.startsWith('⛔ Ferme GOG Galaxy'));
+    expect(motifs).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /revérifier/ })).toHaveLength(1);
+    // Juste au-dessus des listes : après le compte rendu du retrait, avant « Dans le jeu ».
+    const motif = motifs[0];
+    const titre = [...document.querySelectorAll('p.sous-titre')].find((p) => p.textContent?.startsWith('🧩 Dans le jeu'))!;
+    expect(motif.compareDocumentPosition(titre) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const compteRendu = [...document.querySelectorAll('p')].find((p) => p.textContent?.startsWith('✅ 30 mods retirés'))!;
+    expect(compteRendu.compareDocumentPosition(motif) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const grises = [...document.querySelectorAll<HTMLButtonElement>('button')].filter((b) => b.disabled);
+    // Retirer (Dans le jeu), Tout ranger de nouveau, 25 Remettre, Tout remettre.
+    expect(grises.length).toBe(1 + 1 + 25 + 1);
+    expect(motif.id).not.toBe('');
+    expect(grises.every((b) => b.getAttribute('aria-describedby') === motif.id)).toBe(true);
+    // Déverrouillé : plus de motif, plus de description ; le focus va au premier bouton actif des listes.
+    reponse = etatVortex({ present: false, mods: [], retires: retire(30), remis: [m('A', 2, 'A-1')], retrait: APRES });
+    await fireEvent.click(screen.getByRole('button', { name: /revérifier/ }));
+    await attendre();
+    expect(document.body.textContent).not.toContain('⛔');
+    expect(document.querySelectorAll('[aria-describedby]')).toHaveLength(0);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Retirer A' }));
+  });
+
+  it('« Dans le jeu » par paquets de 25, avec la recherche au bureau ; au canapé, chaque ligne se vise même tout grisé', async () => {
+    const beaucoup = Array.from({ length: 30 }, (_, i) => m(`Remis ${String(i).padStart(2, '0')}`, 2));
+    reponse = etatVortex({ present: false, mods: [], retires: retire(3), remis: beaucoup, retrait: APRES });
+    await ouvrir();
+    expect(document.querySelectorAll('li[data-cle^="jeu:"]')).toHaveLength(25);
+    await fireEvent.click(screen.getByRole('button', { name: 'Voir 5 de plus' }));
+    await attendre();
+    expect(document.querySelectorAll('li[data-cle^="jeu:"]')).toHaveLength(30);
+    const champ = screen.getByRole('searchbox', { name: 'Chercher un mod remis' });
+    await fireEvent.input(champ, { target: { value: 'remis 07' } });
+    await attendre();
+    expect(document.querySelectorAll('li[data-cle^="jeu:"]')).toHaveLength(1);
+    expect(screen.getByText('1 sur 30')).toBeTruthy();
+    expect([...document.querySelectorAll('li[data-cle^="jeu:"], li[data-cle^="retire:"]')].every((l) => l.getAttribute('tabindex') === '-1')).toBe(true);
+    cleanup();
+    document.documentElement.setAttribute('data-taodbox', '');
+    reponse = etatVortex({ present: false, mods: [], retires: retire(3), remis: [m('A', 2, 'A-1')], retrait: APRES, verrou: 'galaxy' });
+    await ouvrir({ deplie: true });
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    const lignes = [...document.querySelectorAll('li[data-cle^="jeu:"], li[data-cle^="retire:"]')];
+    expect(lignes).toHaveLength(4);
+    expect(lignes.every((l) => l.getAttribute('tabindex') === '0')).toBe(true);
+  });
+
+  it('sans manifeste de Vortex : « 🧹 Tout ranger de nouveau » range tous les mods remis, par le même enchaînement', async () => {
+    reponse = etatVortex({ present: false, mods: [], retires: [], remis: [m('A', 2, 'A-1'), m('B', 3, 'B-1')], retrait: APRES });
+    await ouvrir();
+    const b = screen.getByRole('button', { name: '🧹 Tout ranger de nouveau' });
+    await fireEvent.click(b);
+    await attendre();
+    const [titre, o] = confirmer.mock.calls[0] as [string, { message: string; danger: boolean }];
+    expect(titre).toBe('🧹 Ranger de nouveau les 2 mods remis ?');
+    expect(o.danger).toBe(true);
+    expect(etapes).toEqual(['abri avant_mod true', 'progres 🧹 Rangement des mods remis (ne ferme pas Frogtend)']);
+    expect(departs).toEqual([{ etape: 'retrait', total: 5 }]);
+    expect(toutRanger).toHaveBeenCalledWith(7, 42);
+    expect(toast).toHaveBeenCalledWith('✅ 2 mods rangés de nouveau (5 fichiers).', 'ok');
+    cleanup();
+    // Vortex encore là (son manifeste) : pas ce bouton, le retrait global suffit.
+    reponse = etatVortex({ remis: [m('A', 2, 'A-1')] });
+    await ouvrir();
+    expect(screen.queryByRole('button', { name: '🧹 Tout ranger de nouveau' })).toBeNull();
+  });
+
+  it('un retrait partiel d’un mod remis se dit « en partie », en alerte', async () => {
+    retirerMod.mockImplementationOnce(async () => ({ ranges: 1, changes: 1, partis: 0, places_prises: 0, erreurs: 0, coinces: 0, mods: 1 }));
+    reponse = etatVortex({ present: false, mods: [], retires: [], remis: [m('A', 2, 'A-1')], retrait: APRES });
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('button', { name: 'Retirer A' }));
+    await attendre();
+    expect(toast).toHaveBeenCalledWith(expect.stringMatching(/^« A » est en partie retiré \(1 fichier rangé\)/), 'alerte');
+  });
+
+  it('la reprise d’un retrait interrompu démarre la barre au vrai compte', async () => {
+    reponse = etatVortex({ retrait: { en_cours: true, faits: 812, total: 2015, laisses: 1, laisses_rompus: 1, sauvegardes_vortex: 0 } });
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('button', { name: '▶ Reprendre le retrait' }));
+    await attendre();
+    expect(departs).toEqual([{ etape: 'retrait', total: 2014, faits: 811 }]);
+  });
+
+  it('Galaxy ouvert avant le retrait : le motif reste en tête, près du bouton de retrait, une seule fois', async () => {
+    reponse = etatVortex({ verrou: 'galaxy' });
+    await ouvrir();
+    const motifs = [...document.querySelectorAll<HTMLElement>('p')].filter((p) => p.textContent?.startsWith('⛔'));
+    expect(motifs).toHaveLength(1);
+    const b = screen.getByRole('button', { name: /Retirer les mods de Vortex/ });
+    expect(b.getAttribute('aria-describedby')).toBe(motifs[0].id);
   });
 
   it('une méthode de Vortex refusée : le motif, jamais le bouton', async () => {

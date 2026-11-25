@@ -12,7 +12,7 @@
   import { auCanape } from '$lib/taodbox/canape';
   import { selectionner } from '$lib/taodbox/manette.svelte';
   import { tick, untrack } from 'svelte';
-  import { avecProgres } from './progres.svelte';
+  import { avecProgres, type DepartProgres } from './progres.svelte';
   import {
     autresMods,
     blocVortexVisible,
@@ -27,19 +27,28 @@
     lignesRetrait,
     ligneVortexRevenu,
     messageApresRemise,
+    messageApresRetraitMod,
+    messageApresToutRanger,
     messageRemise,
     messageRetrait,
+    messageRetraitMod,
+    messageToutRanger,
+    retraitModComplet,
     messageToutRemettre,
     modsEnCause,
     modsEnPlace,
     motifVerrou,
     PAQUET,
     titreRetrait,
+    titreRetraitMod,
     toastRetrait,
     trier,
   } from './vortex';
 
   let { id, titre, deplie = false }: { id: number; titre: string; deplie?: boolean } = $props();
+  /** L'identifiant du motif d'un verrou : chaque bouton grisé le désigne (`aria-describedby`). */
+  const uid = $props.id();
+  const idMotif = `vortex-motif-${uid}`;
 
   let e = $state<EtatVortex | null>(null);
   let charge = $state(false);
@@ -52,8 +61,10 @@
   let autresVus = $state(false);
   let limiteAutres = $state(PAQUET);
   let limiteRetires = $state(PAQUET);
+  let limiteRemis = $state(PAQUET);
   let recherche = $state('');
   let rechercheRetires = $state('');
+  let rechercheRemis = $state('');
   /** Ce que le lecteur d'écran entend : l'étape, jamais le pourcentage. */
   let annonce = $state('');
   let bloc = $state<HTMLElement | null>(null);
@@ -78,6 +89,15 @@
   const trouves = $derived(recherche.trim() ? chercher(autres, recherche) : []);
   const retires = $derived(e ? trier(e.retires) : []);
   const retiresMontres = $derived(rechercheRetires.trim() ? chercher(retires, rechercheRetires) : retires);
+  // 0.227.1 (défaut vu par Seb le 25/11) : les mods REMIS par Frogtend, « 🧩 Dans le jeu », chacun retirable de nouveau.
+  const remis = $derived(e ? trier(e.remis ?? []) : []);
+  const remisMontres = $derived(rechercheRemis.trim() ? chercher(remis, rechercheRemis) : remis);
+  // Sans manifeste de Vortex dans le jeu (son dépôt effacé, ou tout remis), plus de retrait global : « Tout ranger ».
+  const peutToutRanger = $derived(!!e && !e.present && !enCours && remis.length > 0);
+  // Le motif d'un verrou ne se dit qu'UNE fois, là où sont les boutons grisés : collé aux listes (« Dans le jeu »,
+  // « Mods retirés ») quand il n'y a plus qu'elles à faire ; sinon en tête de la partie dépliée (retrait, reprise).
+  const motifAuxListes = $derived(!!motif && !!e && !enCours && !(e.present && e.mods.length > 0) && (retires.length > 0 || remis.length > 0));
+  const decrit = $derived(verrouille ? idMotif : undefined);
   const peutRetirer = $derived(!!e && e.present && !e.refus && !enCours && e.mods.length > 0);
   // Au canapé, les lignes se visent à la manette pour faire défiler la liste.
   const tabLigne = $derived(canape ? 0 : -1);
@@ -90,8 +110,10 @@
     autresVus = false;
     limiteAutres = PAQUET;
     limiteRetires = PAQUET;
+    limiteRemis = PAQUET;
     recherche = '';
     rechercheRetires = '';
+    rechercheRemis = '';
     annonce = '';
     charger(jeu);
   });
@@ -144,6 +166,8 @@
   /** « 🔁 C'est fait, revérifier » : l'état relu ; s'il bloque encore, la personne le sait ; sinon le focus va à ce
    * qu'elle voulait faire (le bouton de retrait, sinon l'en-tête). */
   async function reverifier() {
+    // Le motif était collé aux listes : le focus ira au premier bouton actif des listes (sinon à l'en-tête).
+    const auxListes = motifAuxListes;
     await relire();
     await tick();
     const reste = encoreOuvert(e?.verrou ?? null);
@@ -152,7 +176,8 @@
       if (boutonVerifier?.isConnected) selectionner(boutonVerifier);
       return;
     }
-    const cible = boutonReprendre ?? boutonRetirer ?? entete;
+    const premierDesListes = bloc?.querySelector<HTMLButtonElement>('.listes button:not(:disabled)') ?? null;
+    const cible = auxListes ? (premierDesListes ?? entete) : (boutonReprendre ?? boutonRetirer ?? entete);
     if (cible?.isConnected) selectionner(cible);
   }
 
@@ -171,9 +196,11 @@
   }
 
   /** Une opération : les parties à l'abri d'abord (la personne choisit si c'est impossible), puis la progression. */
-  async function operer<T>(message: string, faire: (suivi: number) => Promise<T>): Promise<T | undefined> {
-    return avecAbriAvant(id, 'avant_mod', () => avecProgres(message, false, faire), { jeuPc: true });
+  async function operer<T>(message: string, faire: (suivi: number) => Promise<T>, depart?: DepartProgres): Promise<T | undefined> {
+    return avecAbriAvant(id, 'avant_mod', () => avecProgres(message, false, faire, depart), { jeuPc: true });
   }
+
+  const fichiersDe = (l: ModVortex[]) => l.reduce((n, m) => n + m.fichiers, 0);
 
   /** Le chemin commun : la question (rien n'est verrouillé avant le oui), puis l'opération, l'état relu, le focus
    * rendu — aussi après « Annuler » ou un abri abandonné. */
@@ -207,7 +234,7 @@
       () => confirmer(titreRetrait(vu), { message: messageRetrait(vu, taille), danger: true, libelleValider: '🧹 Retirer les mods' }),
       async () => {
         annonce = 'Retrait des mods de Vortex en cours.';
-        const b = await operer('🧹 Retrait des mods de Vortex (ne ferme pas Frogtend)', (s) => api.modsVortexRetirer(id, s));
+        const b = await operer('🧹 Retrait des mods de Vortex (ne ferme pas Frogtend)', (s) => api.modsVortexRetirer(id, s), { etape: 'verification', total: fichiersDe(vu.mods) });
         if (b === undefined) {
           annonce = '';
           return;
@@ -219,13 +246,16 @@
   }
 
   function reprendre() {
-    if (!enCours) return;
+    if (!enCours || !e?.retrait) return;
+    ordre = [];
+    // La barre part du vrai compte : les fichiers déjà rangés avant la coupure.
+    const depart: DepartProgres = { etape: 'retrait', total: e.retrait.total - e.retrait.laisses, faits: Math.max(0, e.retrait.faits - e.retrait.laisses) };
     return avecAccord(
       '',
       async () => true,
       async () => {
         annonce = 'Reprise du retrait des mods.';
-        const b = await operer('🧹 Retrait des mods de Vortex (ne ferme pas Frogtend)', (s) => api.modsVortexReprendre(id, s));
+        const b = await operer('🧹 Retrait des mods de Vortex (ne ferme pas Frogtend)', (s) => api.modsVortexReprendre(id, s), depart);
         if (b === undefined) {
           annonce = '';
           return;
@@ -238,13 +268,13 @@
 
   function remettre(m: ModVortex) {
     if (enCours) return;
-    ordre = retiresMontres.map((x) => x.source);
+    ordre = retiresMontres.map((x) => `retire:${x.source}`);
     return avecAccord(
-      m.source,
+      `retire:${m.source}`,
       () => confirmer(`↩ Remettre « ${m.nom} » ?`, { message: messageRemise(m, version), libelleValider: '↩ Remettre' }),
       async () => {
         annonce = `Remise de ${m.nom}.`;
-        const b = await operer(`↩ Remise de « ${m.nom} » (ne ferme pas Frogtend)`, (s) => api.modsVortexRemettre(id, m.source, s));
+        const b = await operer(`↩ Remise de « ${m.nom} » (ne ferme pas Frogtend)`, (s) => api.modsVortexRemettre(id, m.source, s), { etape: 'remise', total: m.fichiers });
         if (b === undefined) {
           annonce = '';
           return;
@@ -259,12 +289,14 @@
     if (!e) return;
     const n = e.retires.length;
     const interrompu = enCours;
+    const depart: DepartProgres = { etape: 'remise', total: fichiersDe(e.retires) };
+    ordre = [];
     return avecAccord(
       '',
       () => confirmer('↩ Tout remettre comme avant ?', { message: messageToutRemettre(interrompu, n, version), libelleValider: '↩ Tout remettre' }),
       async () => {
         annonce = 'Remise des mods en cours.';
-        const b = await operer('↩ Remise des mods dans le jeu (ne ferme pas Frogtend)', (s) => api.modsVortexToutRemettre(id, s));
+        const b = await operer('↩ Remise des mods dans le jeu (ne ferme pas Frogtend)', (s) => api.modsVortexToutRemettre(id, s), depart);
         if (b === undefined) {
           annonce = '';
           return;
@@ -275,8 +307,58 @@
     );
   }
 
+  /** 🧹 Retire de nouveau UN mod remis (partie « 🧩 Dans le jeu ») : le même enchaînement que les autres actions. */
+  function retirerMod(m: ModVortex) {
+    if (enCours) return;
+    ordre = remisMontres.map((x) => `jeu:${x.source}`);
+    return avecAccord(
+      `jeu:${m.source}`,
+      () => confirmer(titreRetraitMod(m), { message: messageRetraitMod(m), danger: true, libelleValider: '🧹 Retirer' }),
+      async () => {
+        annonce = `Retrait de ${m.nom}.`;
+        const b = await operer(`🧹 Retrait de « ${m.nom} » (ne ferme pas Frogtend)`, (s) => api.modsVortexRetirerMod(id, m.source, s), { etape: 'retrait', total: m.fichiers });
+        if (b === undefined) {
+          annonce = '';
+          return;
+        }
+        toast(messageApresRetraitMod(b, m.nom), retraitModComplet(b) ? 'ok' : 'alerte');
+        annonce = 'Mod retiré.';
+      },
+    );
+  }
+
+  /** 🧹 « Tout ranger de nouveau » : chaque mod remis (sans le dépôt de Vortex, plus de retrait global possible). */
+  function toutRanger() {
+    if (!peutToutRanger) return;
+    const n = remis.length;
+    const total = fichiersDe(remis);
+    ordre = [];
+    return avecAccord(
+      '',
+      () => confirmer(n === 1 ? '🧹 Ranger de nouveau le mod remis ?' : `🧹 Ranger de nouveau les ${n.toLocaleString('fr-FR')} mods remis ?`, { message: messageToutRanger(n), danger: true, libelleValider: '🧹 Tout ranger' }),
+      async () => {
+        annonce = 'Rangement des mods remis en cours.';
+        const b = await operer('🧹 Rangement des mods remis (ne ferme pas Frogtend)', (s) => api.modsVortexToutRanger(id, s), { etape: 'retrait', total });
+        if (b === undefined) {
+          annonce = '';
+          return;
+        }
+        toast(messageApresToutRanger(b), retraitModComplet(b) ? 'ok' : 'alerte');
+        annonce = 'Mods rangés.';
+      },
+    );
+  }
+
   const plus = (montres: number, total: number) => Math.min(PAQUET, total - montres);
 </script>
+
+{#snippet verrou()}
+  <!-- Le motif d'un verrou (une seule fois à l'écran) : les boutons grisés le désignent. -->
+  <p class="bord err" id={idMotif}>{motif}</p>
+  {#if e?.verrou}
+    <div class="actions"><button class="btn petit" bind:this={boutonVerifier} onclick={reverifier} disabled={occupe}>🔁 C’est fait, revérifier</button></div>
+  {/if}
+{/snippet}
 
 {#snippet ligneMod(m: ModVortex)}
   <!-- Au bureau `tabindex="-1"` (le focus y revient après une action) ; au canapé `0`, pour défiler à la manette. -->
@@ -295,20 +377,15 @@
     <!-- Le lecteur d'écran n'annonce que l'ÉTAPE puis la fin, jamais le pourcentage qui bouge. -->
     <span class="annonce" aria-live="polite">{annonce}</span>
     {#if ouvert}
-      {#if motif}
-        <p class="bord err">{motif}</p>
-        {#if e.verrou}
-          <div class="actions"><button class="btn petit" bind:this={boutonVerifier} onclick={reverifier} disabled={occupe}>🔁 C’est fait, revérifier</button></div>
-        {/if}
-      {/if}
+      {#if motif && !motifAuxListes}{@render verrou()}{/if}
       {#if e.refus}<p class="bord warn">{e.refus}</p>{/if}
       {#if ligneVortexRevenu(e)}<p class="bord warn">{ligneVortexRevenu(e)}</p>{/if}
 
       {#if enCours && e.retrait}
         <p class="bord warn">{ligneInterrompu(e.retrait)}</p>
         <div class="actions">
-          <button class="btn petit" bind:this={boutonReprendre} onclick={reprendre} disabled={verrouille}>▶ Reprendre le retrait</button>
-          <button class="btn petit" onclick={toutRemettre} disabled={verrouille}>↩ Tout remettre comme avant</button>
+          <button class="btn petit" bind:this={boutonReprendre} onclick={reprendre} disabled={verrouille} aria-describedby={decrit}>▶ Reprendre le retrait</button>
+          <button class="btn petit" onclick={toutRemettre} disabled={verrouille} aria-describedby={decrit}>↩ Tout remettre comme avant</button>
         </div>
       {:else}
         {#if enPlace}
@@ -329,7 +406,7 @@
         {#if e.present && e.mods.length}
           {#if peutRetirer}
             <div class="actions">
-              <button class="btn petit danger" bind:this={boutonRetirer} onclick={retirer} disabled={verrouille}>{libelleRetrait(e)}</button>
+              <button class="btn petit danger" bind:this={boutonRetirer} onclick={retirer} disabled={verrouille} aria-describedby={decrit}>{libelleRetrait(e)}</button>
             </div>
           {/if}
           {#if autres.length}
@@ -357,6 +434,36 @@
             <p class:muted={i > 0 && !l.startsWith('⚠') && !l.startsWith('Désinstalle')}>{l}</p>
           {/each}
         {/if}
+        {#if motifAuxListes}{@render verrou()}{/if}
+        <div class="listes">
+        {#if remis.length}
+          <p class="sous-titre">🧩 Dans le jeu ({remis.length.toLocaleString('fr-FR')})</p>
+          {#if !canape && remis.length > PAQUET}
+            <input class="filtre" type="search" placeholder="🔎 Chercher…" aria-label="Chercher un mod remis" bind:value={rechercheRemis} />
+            {#if rechercheRemis.trim()}<p class="muted">{compteRecherche(remisMontres.length, remis.length)}</p>{/if}
+          {/if}
+          <ul>
+            {#each remisMontres.slice(0, limiteRemis) as m (m.source)}
+              <!-- Au canapé, la ligne se vise à la manette (même tout grisé) ; au bureau, le focus y revient. -->
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+              <li data-cle={`jeu:${m.source}`} tabindex={tabLigne}>
+                <span class="nom">{m.nom}</span>
+                <span class="action">
+                  <button class="btn petit" aria-label={`Retirer ${m.nom}`} onclick={() => retirerMod(m)} disabled={verrouille} aria-describedby={decrit}>🧹 Retirer</button>
+                </span>
+                <span class="muted detail">{detailMod(m)}</span>
+              </li>
+            {/each}
+          </ul>
+          {#if remisMontres.length > limiteRemis}
+            <button class="btn petit" onclick={() => (limiteRemis += PAQUET)}>Voir {plus(limiteRemis, remisMontres.length)} de plus</button>
+          {/if}
+          {#if peutToutRanger}
+            <div class="actions">
+              <button class="btn petit" onclick={toutRanger} disabled={verrouille} aria-describedby={decrit}>🧹 Tout ranger de nouveau</button>
+            </div>
+          {/if}
+        {/if}
         {#if retires.length}
           <p class="sous-titre">🧩 Mods retirés ({retires.length.toLocaleString('fr-FR')})</p>
           {#if !canape && retires.length > PAQUET}
@@ -365,10 +472,11 @@
           {/if}
           <ul>
             {#each retiresMontres.slice(0, limiteRetires) as m (m.source)}
-              <li data-cle={m.source} tabindex="-1">
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+              <li data-cle={`retire:${m.source}`} tabindex={tabLigne}>
                 <span class="nom">{m.nom}</span>
                 <span class="action">
-                  <button class="btn petit" aria-label={`Remettre ${m.nom}`} onclick={() => remettre(m)} disabled={verrouille}>↩ Remettre</button>
+                  <button class="btn petit" aria-label={`Remettre ${m.nom}`} onclick={() => remettre(m)} disabled={verrouille} aria-describedby={decrit}>↩ Remettre</button>
                 </span>
                 <span class="muted detail">{detailMod(m)}</span>
               </li>
@@ -378,9 +486,10 @@
             <button class="btn petit" onclick={() => (limiteRetires += PAQUET)}>Voir {plus(limiteRetires, retiresMontres.length)} de plus</button>
           {/if}
           <div class="actions">
-            <button class="btn petit" onclick={toutRemettre} disabled={verrouille}>↩ Tout remettre comme avant</button>
+            <button class="btn petit" onclick={toutRemettre} disabled={verrouille} aria-describedby={decrit}>↩ Tout remettre comme avant</button>
           </div>
         {/if}
+        </div>
       {/if}
     {/if}
   </div>
@@ -461,6 +570,10 @@
     display: flex;
     gap: calc(6 * var(--u));
     flex-wrap: wrap;
+  }
+  .listes {
+    display: grid;
+    gap: calc(6 * var(--u));
   }
   .lien-liste {
     justify-self: start;

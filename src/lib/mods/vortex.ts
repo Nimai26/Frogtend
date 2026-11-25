@@ -1,7 +1,7 @@
 // Lot M1 (✅ Seb 25/11) : les textes du bloc « 🧩 Mods » des mods posés par VORTEX. Tout est GÉNÉRÉ depuis l'état et le
 // diagnostic rendus par le cœur (aucun texte écrit pour un jeu précis) ; jamais un chemin, un « lien dur », un
 // « manifeste » ni un nom de fichier technique à l'écran.
-import type { BilanRemiseVortex, DiagnosticVortex, EtatVortex, ModVortex } from '$lib/api';
+import type { BilanRemiseVortex, BilanRetraitModVortex, DiagnosticVortex, EtatVortex, ModVortex } from '$lib/api';
 import { filtrerOptions } from '$lib/dialogues/filtre';
 
 /** La liste se montre par paquets de cette taille (« Voir 25 de plus »). */
@@ -15,9 +15,9 @@ export const nb = (n: number) => n.toLocaleString('fr-FR');
 export const DESINSTALLER_VORTEX =
   'Désinstalle maintenant Vortex (Paramètres de Windows ▸ Applications ▸ Vortex ▸ Désinstaller) : s’il est rouvert, il remet ses mods.';
 
-/** Le bloc a-t-il quelque chose à dire (Vortex présent, un retrait en cours ou des mods à remettre) ? */
+/** Le bloc a-t-il quelque chose à dire (Vortex présent, un retrait en cours, des mods à remettre ou remis) ? */
 export function blocVortexVisible(e: EtatVortex | null | undefined): e is EtatVortex {
-  return !!e && (e.present || !!e.retrait || e.retires.length > 0);
+  return !!e && (e.present || !!e.retrait || e.retires.length > 0 || (e.remis?.length ?? 0) > 0);
 }
 
 /** Des mods de Vortex sont encore posés dans le jeu : seul cas où le diagnostic a un sens (après le retrait, ses
@@ -46,7 +46,11 @@ export function enteteVortex(e: EtatVortex): string {
   }
   if (e.present) return 'des mods posés par Vortex';
   const n = e.retires.length;
-  return `${nb(n)} ${pluriel(n, 'mod retiré', 'mods retirés')} de Vortex`;
+  const r = e.remis?.length ?? 0;
+  const dansLeJeu = `${nb(r)} ${pluriel(r, 'mod remis', 'mods remis')} dans le jeu`;
+  if (!n) return dansLeJeu;
+  const retires = `${nb(n)} ${pluriel(n, 'mod retiré', 'mods retirés')} de Vortex`;
+  return r ? `${retires} · ${dansLeJeu}` : retires;
 }
 
 /** Ce que le diagnostic dit, phrase par phrase (rien s'il ne dit rien). */
@@ -179,6 +183,62 @@ export function messageRemise(m: ModVortex, version: string | null): string {
   return version ? `${base} Il ne marche peut-être pas avec la version ${version}.` : `${base} Il ne marche peut-être pas avec cette version du jeu.`;
 }
 
+/** 0.227.1 : le titre de la confirmation « 🧹 Retirer » d'un mod remis (partie « 🧩 Dans le jeu »). */
+export function titreRetraitMod(m: ModVortex): string {
+  return `🧹 Retirer « ${m.nom} » ?`;
+}
+
+/** Le message de cette confirmation : ce qui se passe, sans rien effacer. */
+export function messageRetraitMod(m: ModVortex): string {
+  const n = m.fichiers;
+  return [
+    `« ${m.nom} » quitte le jeu : ${n === 1 ? 'son fichier est rangé' : `ses ${nb(n)} fichiers sont rangés`} de nouveau à part, dans le dossier du jeu, avec les autres mods retirés. Rien n’est effacé.`,
+    'Tes parties sont mises à l’abri avant.',
+    'Tu pourras le remettre.',
+  ].join(' ');
+}
+
+/** Pourquoi des fichiers d'un mod remis sont restés dans le jeu (ou à part), phrase par phrase. */
+function causesRestes(b: BilanRetraitModVortex): string[] {
+  const l: string[] = [];
+  const autres = b.changes + b.partis;
+  if (autres)
+    l.push(autres === 1 ? '1 fichier n’est plus celui que Frogtend avait remis (changé ou effacé)' : `${nb(autres)} fichiers ne sont plus ceux que Frogtend avait remis (changés ou effacés)`);
+  if (b.places_prises) l.push(b.places_prises === 1 ? '1 fichier ne trouve plus sa place à part (déjà prise)' : `${nb(b.places_prises)} fichiers ne trouvent plus leur place à part (déjà prise)`);
+  if (b.erreurs)
+    l.push(b.erreurs === 1 ? 'Windows a refusé de déplacer 1 fichier (ouvert ou protégé) : réessaie plus tard' : `Windows a refusé de déplacer ${nb(b.erreurs)} fichiers (ouverts ou protégés) : réessaie plus tard`);
+  if (b.coinces)
+    l.push(b.coinces === 1 ? '1 fichier rangé n’a pas pu être vérifié : il reste proposé à la remise' : `${nb(b.coinces)} fichiers rangés n’ont pas pu être vérifiés : ils restent proposés à la remise`);
+  return l;
+}
+
+/** Le message après le retrait d'un mod remis : la vérité, rien de plus (resté dans le jeu, en partie, ou retiré). */
+export function messageApresRetraitMod(b: BilanRetraitModVortex, nom: string): string {
+  const causes = causesRestes(b);
+  const ranges = `${nb(b.ranges)} ${pluriel(b.ranges, 'fichier rangé', 'fichiers rangés')}`;
+  if (b.ranges === 0 && b.coinces === 0) return `⚠ « ${nom} » est resté dans le jeu : ${causes.length ? causes.join(' ; ') : 'aucun fichier n’a pu être rangé'}.`;
+  if (b.changes + b.places_prises + b.erreurs + b.coinces > 0) return `« ${nom} » est en partie retiré (${ranges}) : ${causes.join(' ; ')}.`;
+  return `✅ « ${nom} » retiré du jeu (${ranges}).${causes.length ? ` ${causes.join(' ; ')}.` : ''}`;
+}
+
+/** Le bilan est-il sans reste (un message « ok ») ? */
+export function retraitModComplet(b: BilanRetraitModVortex): boolean {
+  return b.ranges > 0 && b.changes + b.places_prises + b.erreurs + b.coinces === 0;
+}
+
+/** 🧹 « Tout ranger de nouveau » (sans le dépôt de Vortex) : la confirmation. */
+export function messageToutRanger(n: number): string {
+  return `${n === 1 ? 'Le mod remis quitte' : `Les ${nb(n)} mods remis quittent`} le jeu : ${n === 1 ? 'ses fichiers sont rangés' : 'leurs fichiers sont rangés'} de nouveau à part, dans le dossier du jeu. Rien n’est effacé. Tes parties sont mises à l’abri avant. Tu pourras les remettre.`;
+}
+
+/** Le message après « Tout ranger de nouveau ». */
+export function messageApresToutRanger(b: BilanRetraitModVortex): string {
+  const causes = causesRestes(b);
+  if (b.ranges === 0 && b.coinces === 0) return `⚠ Aucun mod n’a été rangé : ${causes.length ? causes.join(' ; ') : 'aucun fichier n’a pu être rangé'}.`;
+  const tete = `${nb(b.mods)} ${pluriel(b.mods, 'mod rangé', 'mods rangés')} de nouveau (${nb(b.ranges)} ${pluriel(b.ranges, 'fichier', 'fichiers')})`;
+  return causes.length ? `${tete} : ${causes.join(' ; ')}.` : `✅ ${tete}.`;
+}
+
 /** Le message de la confirmation « ↩ Tout remettre comme avant ». */
 export function messageToutRemettre(enCours: boolean, n: number, version: string | null): string {
   if (enCours) return 'Les fichiers déjà rangés reviennent dans le jeu, à leur place : le jeu redevient comme avant le retrait. Tes parties sont mises à l’abri avant.';
@@ -193,6 +253,8 @@ export function messageApresRemise(b: BilanRemiseVortex, nom: string | null): st
   const l = [`✅ ${quoi} (${nb(b.remis)} ${pluriel(b.remis, 'fichier', 'fichiers')}).`];
   if (b.places_prises) l.push(`${nb(b.places_prises)} ${pluriel(b.places_prises, 'fichier reste rangé : sa place', 'fichiers restent rangés : leur place')} dans le jeu est prise par un autre.`);
   if (b.changes) l.push(`${nb(b.changes)} ${pluriel(b.changes, 'fichier rangé a changé : il', 'fichiers rangés ont changé : ils')} reste${b.changes > 1 ? 'nt' : ''} à part.`);
+  const e = b.erreurs ?? 0;
+  if (e) l.push(e === 1 ? 'Windows a refusé de déplacer 1 fichier (ouvert ou protégé) : il reste à part, réessaie plus tard.' : `Windows a refusé de déplacer ${nb(e)} fichiers (ouverts ou protégés) : ils restent à part, réessaie plus tard.`);
   return l.join(' ');
 }
 

@@ -1,6 +1,6 @@
 // Lot M1 : les textes du bloc des mods de Vortex, GÉNÉRÉS depuis l'état du cœur (aucun texte propre à un jeu).
 import { describe, expect, it } from 'vitest';
-import type { DiagnosticVortex, EtatVortex, ModVortex } from '$lib/api';
+import type { BilanRetraitModVortex, DiagnosticVortex, EtatVortex, ModVortex } from '$lib/api';
 import {
   autresMods,
   blocVortexVisible,
@@ -14,7 +14,12 @@ import {
   lignesRetrait,
   ligneVortexRevenu,
   messageApresRemise,
+  messageApresRetraitMod,
+  messageApresToutRanger,
   messageRemise,
+  messageRetraitMod,
+  messageToutRanger,
+  retraitModComplet,
   messageRetrait,
   messageToutRemettre,
   modsEnCause,
@@ -22,6 +27,7 @@ import {
   motifVerrou,
   nb,
   titreRetrait,
+  titreRetraitMod,
   toastRetrait,
   trier,
 } from './vortex';
@@ -48,6 +54,7 @@ function etatVortex(x: Partial<EtatVortex> = {}): EtatVortex {
     octets: 4.1 * 1024 ** 3,
     retrait: null,
     retires: [],
+    remis: [],
     diagnostic: CYBERPUNK,
     en_cause: [],
     verrou: null,
@@ -63,12 +70,16 @@ describe('les textes des mods de Vortex', () => {
     expect(blocVortexVisible(etatVortex({ present: false }))).toBe(false);
     expect(blocVortexVisible(etatVortex())).toBe(true);
     expect(blocVortexVisible(etatVortex({ present: false, retires: [m('A')] }))).toBe(true);
+    // 0.227.1 : un mod remis seul (tous les autres remis aussi) garde le bloc visible.
+    expect(blocVortexVisible(etatVortex({ present: false, remis: [m('A')] }))).toBe(true);
   });
 
   it('l’en-tête dit le nombre de mods et si le jeu ne démarre plus', () => {
     expect(enteteVortex(etatVortex())).toBe('284 mods posés par Vortex · ⚠ le jeu ne démarre plus');
     expect(enteteVortex(etatVortex({ mods: [m('A')], diagnostic: SANS }))).toBe('1 mod posé par Vortex');
     expect(enteteVortex(etatVortex({ present: false, retires: [m('A'), m('B')], diagnostic: SANS }))).toBe('2 mods retirés de Vortex');
+    expect(enteteVortex(etatVortex({ present: false, retires: [m('A'), m('B')], remis: [m('C')], diagnostic: SANS }))).toBe('2 mods retirés de Vortex · 1 mod remis dans le jeu');
+    expect(enteteVortex(etatVortex({ present: false, remis: [m('C'), m('D')], diagnostic: SANS }))).toBe('2 mods remis dans le jeu');
     expect(enteteVortex(etatVortex({ retrait: { en_cours: true, faits: 812, total: 2015, laisses: 0, laisses_rompus: 0, sauvegardes_vortex: 0 } }))).toContain('interrompu');
   });
 
@@ -164,6 +175,32 @@ describe('les textes des mods de Vortex', () => {
     expect(compteRecherche(0, 284)).toMatch(/Aucun/);
   });
 
+  it('0.227.1 : retirer un mod remis se dit simplement, et son bilan aussi', () => {
+    const x = m('Immersive Bullet Holes', 3);
+    expect(titreRetraitMod(x)).toBe('🧹 Retirer « Immersive Bullet Holes » ?');
+    expect(messageRetraitMod(x)).toContain('ses 3 fichiers sont rangés de nouveau à part');
+    expect(messageRetraitMod(x)).toContain('Rien n’est effacé.');
+    expect(messageRetraitMod(m('A', 1))).toContain('son fichier est rangé');
+    const b = (x: Partial<BilanRetraitModVortex>): BilanRetraitModVortex => ({ ranges: 0, changes: 0, partis: 0, places_prises: 0, erreurs: 0, coinces: 0, mods: 0, ...x });
+    // Tout rangé.
+    expect(messageApresRetraitMod(b({ ranges: 3, mods: 1 }), 'A')).toBe('✅ « A » retiré du jeu (3 fichiers rangés).');
+    expect(retraitModComplet(b({ ranges: 3 }))).toBe(true);
+    // Rien rangé : il est RESTÉ dans le jeu, jamais « ✅ retiré ».
+    expect(messageApresRetraitMod(b({ changes: 1 }), 'A')).toBe('⚠ « A » est resté dans le jeu : 1 fichier n’est plus celui que Frogtend avait remis (changé ou effacé).');
+    expect(retraitModComplet(b({ changes: 1 }))).toBe(false);
+    // En partie : le compte, puis chaque raison.
+    expect(messageApresRetraitMod(b({ ranges: 1, places_prises: 2, erreurs: 1 }), 'A')).toBe(
+      '« A » est en partie retiré (1 fichier rangé) : 2 fichiers ne trouvent plus leur place à part (déjà prise) ; Windows a refusé de déplacer 1 fichier (ouvert ou protégé) : réessaie plus tard.',
+    );
+    // Un fichier effacé (parti) ne fait pas un retrait partiel, mais il est dit.
+    expect(messageApresRetraitMod(b({ ranges: 2, partis: 1 }), 'A')).toBe('✅ « A » retiré du jeu (2 fichiers rangés). 1 fichier n’est plus celui que Frogtend avait remis (changé ou effacé).');
+    expect(messageApresRetraitMod(b({ ranges: 0, coinces: 1 }), 'A')).toContain('en partie retiré');
+    // Tout ranger de nouveau.
+    expect(messageToutRanger(2)).toContain('Les 2 mods remis quittent le jeu');
+    expect(messageApresToutRanger(b({ ranges: 5, mods: 2 }))).toBe('✅ 2 mods rangés de nouveau (5 fichiers).');
+    expect(messageApresToutRanger(b({ changes: 2 }))).toMatch(/^⚠ Aucun mod n’a été rangé/);
+  });
+
   it('aucun texte ne dit un chemin ni un mot technique', () => {
     const tous = [
       enteteVortex(etatVortex()),
@@ -171,6 +208,9 @@ describe('les textes des mods de Vortex', () => {
       messageRetrait(etatVortex(), taille),
       ...lignesRetrait({ mods: 2, laisses: 2, laisses_rompus: 1 }),
       motifVerrou('galaxy', false) ?? '',
+      messageRetraitMod(m('A', 2)),
+      messageApresRetraitMod({ ranges: 1, changes: 1, partis: 1, places_prises: 1, erreurs: 1, coinces: 1, mods: 1 }, 'A'),
+      messageToutRanger(3),
     ].join(' ');
     expect(tous).not.toMatch(/lien dur|manifeste|deployment|\.json|\\|[A-Z]:\//i);
   });

@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🧩 Les mods remis se voient (0.227.1)
+- [ ] 1. Mettre à jour, GOG Galaxy fermé. Fiche de Cyberpunk ▸ 🧩 Mods : une partie « 🧩 Dans le jeu (1) » avec
+      « (4k) Immersive Bullet Holes », puis « Mods retirés (283) ».
+- [ ] 2. « 🧹 Retirer » sur « (4k) Immersive Bullet Holes » : il quitte « Dans le jeu » et revient dans « Mods retirés ».
+      La barre montre l'étape et le compteur dès le départ.
+- [ ] 3. Ouvrir GOG Galaxy, revenir sur la fiche : la raison (« Ferme GOG Galaxy d'abord ») est juste au-dessus des
+      listes ; fermer Galaxy, « 🔁 C'est fait, revérifier » : les boutons reviennent.
+
 ## 🧩 Retirer les mods de Vortex (0.227.0, lot M1) — banc d'essai : Cyberpunk 2077
 - [x] 1. Mettre à jour Frogtend. Vortex et GOG Galaxy FERMÉS. Fiche de Cyberpunk 2077 : un bloc « 🧩 Mods : 284 mods
       posés par Vortex · ⚠ le jeu ne démarre plus » ; en l'ouvrant : « mis à jour (2.21 → 2.50) », « Cyber Engine

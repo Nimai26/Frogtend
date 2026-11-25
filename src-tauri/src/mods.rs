@@ -608,10 +608,16 @@ pub fn installer_dans(
     // Lot M1 (Seb, 25/11) : jamais par-dessus un fichier posé par Vortex — listé dans son manifeste, ou partagé avec un
     // autre dossier (plusieurs liens : son dépôt) — : ce n'est pas un « original » du jeu à garder de côté.
     let de_vortex = crate::mods_vortex::rels_listes(jeu);
+    // 0.227.1 : ni par-dessus un mod de Vortex REMIS par Frogtend (sans le dépôt de Vortex, il n'a plus qu'un lien et
+    // n'est plus listé par aucun manifeste).
+    let remis = crate::mods_vortex::rels_remis(jeu);
     for e in &entrees {
         let rel = dans_le_jeu(&rel_de(e));
         if de_vortex.contains(&rel.to_lowercase()) {
             return Err(Erreur::Refus("Ce mod remplacerait un fichier posé par Vortex : retire d'abord les mods de Vortex de ce jeu.".into()));
+        }
+        if remis.contains(&rel.to_lowercase()) {
+            return Err(Erreur::Refus("Ce mod remplacerait un mod de Vortex remis par Frogtend : retire-le d'abord (🧹).".into()));
         }
         if crate::mods_vortex::liens(&jeu.join(&rel)).is_some_and(|n| n >= 2) {
             return Err(Erreur::Refus("Ce mod remplacerait un fichier partagé avec un autre dossier (souvent un mod de Vortex) : Frogtend n'y touche pas.".into()));
@@ -1210,6 +1216,44 @@ mod tests {
         assert!(installer(&jeu, &a, &f, "M", "x", "", false, "t").is_err());
         assert!(!jeu.join("dsound.dll").exists() && installes(&jeu).is_empty(), "rien n'est installé");
         assert_eq!(std::fs::read(depot.join("dsound.dll")).unwrap(), b"vortex");
+    }
+
+    /// 0.227.1 : ni par-dessus un mod de Vortex REMIS par Frogtend, même avec un seul lien (dépôt de Vortex effacé) et
+    /// sans aucun manifeste de Vortex dans le jeu ; un mod « tout remis » ne compte plus (Vortex a repris la main).
+    #[test]
+    fn un_mod_ne_se_pose_jamais_sur_un_mod_de_vortex_remis() {
+        use crate::mods_vortex::{EtatFichier, EtatRetrait, FichierRetire, Retrait};
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("Jeu");
+        std::fs::create_dir_all(&jeu).unwrap();
+        std::fs::write(jeu.join("dsound.dll"), b"remis").unwrap();
+        assert_eq!(crate::mods_vortex::liens(&jeu.join("dsound.dll")), Some(1));
+        let retrait = crate::mods_vortex::dossier_retraits(&jeu).join("100");
+        std::fs::create_dir_all(&retrait).unwrap();
+        let ecrire = |etat: EtatRetrait| {
+            let r = Retrait {
+                version: 1,
+                etat,
+                commence_le: "100".into(),
+                depot: d.path().join("Vortex efface").to_string_lossy().into(),
+                fichiers: vec![FichierRetire { rel: "dsound.dll".into(), source: "Mod-1-1-1700000000".into(), taille: 5, volume: 1, index: 2, etat: EtatFichier::Remis, motif: None }],
+                dossiers_retires: vec![],
+                deploiement_range: true,
+                sauvegardes_vortex: vec![],
+            };
+            std::fs::write(retrait.join("retrait.json"), serde_json::to_vec(&r).unwrap()).unwrap();
+        };
+        ecrire(EtatRetrait::Fini);
+        assert!(crate::mods_vortex::rels_remis(&jeu).contains("dsound.dll"));
+        let a = d.path().join("m.zip");
+        zip_de(&a, &[("DSOUND.dll", b"mod")]);
+        let f = FichierMod::depuis(&fusion()).unwrap();
+        let x = installer(&jeu, &a, &f, "M", "x", "", false, "t").unwrap_err().to_string();
+        assert!(x.contains("remis par Frogtend"), "{x}");
+        assert_eq!(std::fs::read(jeu.join("dsound.dll")).unwrap(), b"remis");
+        assert!(installes(&jeu).is_empty());
+        ecrire(EtatRetrait::ToutRemis);
+        assert!(crate::mods_vortex::rels_remis(&jeu).is_empty());
     }
 
     #[test]
