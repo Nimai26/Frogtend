@@ -1070,6 +1070,8 @@ pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c
 
 ### Prochains lots (décisions de Seb, 02/10)
 
+**✅ Ordre (Seb, 25/11)** : M1 validé → **C4c-1** (lancer les jeux GOG SANS Galaxy : tâche « game » du goggame-<id>.info ; à défaut, la tâche principale FileTask du dossier, comme Heroic et Playnite, pour les jeux Unreal à petit programme de démarrage — décision de Seb 25/11 ; Galaxy en tout dernier secours) → **C4c-2** (installer les jeux GOG sans Galaxy) → **C4c-3** (fenêtre d'attente pendant la lecture d'un compte GOG) → **M2**. Avis de l'expert lancement (25/11) : suivi de partie, abri, session Firehouse marchent déjà en direct ; à vérifier en vrai : le service GalaxyCommunication réveillé par le jeu (rouvrirait le verrou des mods) ; REDmod/-modded renvoyé à M2.
+
 **Ordre en cours (Seb, 22/11)** : lot **S** (S1 livré en 0.220.0-0.220.1 ; puis S2 à S7) → lot **R** (recompilations,
 ci-dessous) → **C4c** (installer et lancer les jeux GOG sans Galaxy, fenêtre d'attente GOG).
 
