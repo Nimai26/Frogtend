@@ -507,6 +507,7 @@ sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14
 
 ### 1.54 (FIGÉ le 25/11, pas encore en service) — le relais NEXUS MODS par Firehouse (besoin 61)
 **Lot N1 EN SERVICE (Firehouse 3.336.0, 25/11)** : `etat`, `jeux`, `mod` (`?prerequis=1`), `fichiers`, `md5`, `maj` ; PAS ENCORE : `obtenir` + `archive` (N2), `compatibilite` + `renseigne` (N3) ; en-tête encore `X-Api-Jeux-Version: 1.53` jusqu'à la fin de N3. Essais réels de Firehouse : Premium reconnu ; quota 20 000/jour et 2 000/heure ; `cyberpunk2077` = game_id 3333 ; CET (107) v1.38.1 : 130 fichiers, `sizeInBytes` pour tous ; prérequis GraphQL OK (CET : aucun) ; refus de clé pas encore vu.
+**Lot N2 EN SERVICE (Firehouse 3.337.0, 25/11)** : `obtenir` + `archive`. Essai réel de Firehouse (17:18, CET 107, fichier 168615 « CET 1.38.1 - Game version 2.5 … .zip ») : 34 868 963 octets = sizeInBytes, téléchargé chez Firehouse en 11 s ; réponse {etat: pret, progression: 1.0, recus = total = 34868963, fichier: {url: /api/jeux/v1/nexus/fichier/cyberpunk2077-107-168615/archive, taille_octets, sha256 2e52be4e…, md5 1f1eb9b2…}, remplace_par: null} ; archive avec Range, ETag = sha256, X-Sha256, X-Complet: 1, Content-Disposition au nom d origine. Reste N3 (compatibilite, renseigne), en-tête 1.54 à sa livraison.
 Reçu par message de la session Firehouse (25/11, deux messages « texte complet » + six précisions tranchées). Rien
 n'est codé chez Firehouse au 25/11 ; exemples réels à venir (Cyberpunk 2.50 : CET 107, RED4ext, ArchiveXL 4198).
 
