@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🧩 Retirer les mods de Vortex (0.227.0, lot M1) — banc d'essai : Cyberpunk 2077
-- [ ] 1. Mettre à jour Frogtend. Vortex et GOG Galaxy FERMÉS. Fiche de Cyberpunk 2077 : un bloc « 🧩 Mods : 284 mods
+- [x] 1. Mettre à jour Frogtend. Vortex et GOG Galaxy FERMÉS. Fiche de Cyberpunk 2077 : un bloc « 🧩 Mods : 284 mods
       posés par Vortex · ⚠ le jeu ne démarre plus » ; en l'ouvrant : « mis à jour (2.21 → 2.50) », « Cyber Engine
       Tweaks » refusé, « RED4ext » s'arrête en chargeant « ArchiveXL », puis le bouton « 🧹 Retirer les mods de Vortex ».
 - [ ] 2. Cliquer « 🧹 Retirer les mods de Vortex » : la fenêtre explique tout, « Annuler » est choisi d'office.
