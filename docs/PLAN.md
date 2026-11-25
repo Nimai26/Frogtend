@@ -1037,6 +1037,7 @@ pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c
 - **Premier lot** : repérer les mods périmés, proposer de les couper pour jouer tout de suite, puis les mettre à jour depuis Nexus.
 - **Nexus Premium** : Seb a un compte Premium (téléchargement direct par l'API, sans clic sur le site, pour son profil ; les comptes gratuits gardent la voie `nxm://`).
 - **Le savoir** (quel mod va avec quelle version du jeu, dépendances) : **Nexus d'abord** ; en cas de doute, **Firehouse se renseigne et l'enregistre** pour les fois suivantes (besoin d'API à écrire).
+- **La clé Nexus vient de Firehouse** (Seb, 25/11) : c'est Firehouse qui la fournit à chaque Frogtend de la famille (interface dans Firehouse pour la saisir) ; **la clé Premium de Seb sert à TOUT LE FOYER**, en connaissance de cause (Nexus : « NEVER share your personal API keys with any other user », règles d'usage de l'API : risque de blocage ; Seb : « on est le même foyer », deux personnes au plus s'en serviront). Forme à arrêter avec Firehouse (clé servie à Frogtend, ou Firehouse qui parle à Nexus à sa place) ; la clé saisie dans Frogtend reste possible.
 
 
 ### Prochains lots (décisions de Seb, 02/10)
