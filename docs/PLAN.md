@@ -1050,6 +1050,7 @@ pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c
   précèdent le retrait), `BlocModsVortex.svelte` au bureau et dans Taodbox. Revues des experts lancement et UI : 2
   bloquants + 10 importants corrigés. Essai réel en LECTURE SEULE (accord de Seb) : 2 014 fichiers prouvés, 1 laissé
   (`options.json`, lien rompu), 284 mods, 4 110 194 748 octets, bon diagnostic. Aucun retrait réel avant l'essai de Seb.
+  **Essai réel de Seb (25/11)** : retrait fait (2 014 fichiers rangés, liens gardés, chargeurs partis, 368 dossiers vides retirés, 81 marqueurs gardés avec les réglages des mods, dépôt Vortex intact, vérifié sur le disque) ; Cyberpunk 2.50 démarre sans mods. **À corriger** : pendant le retrait, la barre de progression est restée vide, sans « N fichiers sur 2 014 ».
 - **M2 (relais Nexus de Firehouse, besoin 61 A)** : identifier les archives de Vortex (`md5_search`), proposer les mises à jour (prérequis d'abord), télécharger en Premium sans clic, réinstaller ; .rar (29 archives) et archives > 2 Go à traiter.
 - **M3 (savoir de Firehouse, besoin 61 B)** : compatibilité par version du jeu affichée (« compatibilité inconnue » jamais « compatible »).
 
