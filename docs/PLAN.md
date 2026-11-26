@@ -1093,6 +1093,7 @@ téléchargement, ou bouton « 🎵 Préparer les musiques ») — jamais de té
 budget de 30 s au lancement ; BGM.bars d'un mod de musique jamais posé ; pose atomique avec sha attendu noté ; abri
 des parties quand le BGM change ; journal en nombres. Revues lancement + UI : 3 bloquants (téléchargements non
 annoncés ×2, BGM.bars de mod) + 9 importants corrigés.
+**✅ 1.55 VALIDÉ par Seb le 26/11 dans Eden** (après 0.229.1 et 0.229.2) : DK Summit à la place de GCN Royaume Sorbet avec SA musique, dernier tour, menus et résultats sans plantage ; fichier commun posé (empreinte 34f63d9a… juste, version 3.0.1 confirmée par le build id dans le journal d'Eden), puis RETIRÉ quand le mod est éteint (dossier vide chez Eden, musique d'origine revenue). Reste : la fiche « 🎵 Musiques de 1 mod » (pas regardée), Ryubing et le canapé (plus tard).
 
 **0.229.2 (26/11)** : version d'une mise à jour EMBARQUÉE dans un XCI (SuperXCI MK8D 3.0.1) lue dans le `.cnmt` du
 NCA Meta (clés de zone de prod.keys, AES-CTR, lectures bornées), règles d'Eden v0.2.1 (PACKED / fournisseur manuel,
