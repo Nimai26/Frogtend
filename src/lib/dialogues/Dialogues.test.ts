@@ -99,6 +99,33 @@ describe('Cocher (plusieurs versions)', () => {
     expect(await reponse).toEqual([32]);
   });
 
+  it('« Tout cocher » et « Tout décocher » (sur demande) ; le focus reste sur la première case', async () => {
+    render(Dialogues);
+    const reponse = cocher('Mods', [
+      { valeur: 'a', libelle: 'A' },
+      { valeur: 'b', libelle: 'B' },
+    ], { coches: [true, false], resume: (l) => `${l.length} mod(s)`, toutCocher: true, libelleValider: 'Télécharger' });
+    await tick();
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: /A/ }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Tout cocher' }));
+    expect(screen.getByText('2 mod(s)')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Tout décocher' }));
+    expect(screen.getByText('0 mod(s)')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Télécharger' }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: 'Tout cocher' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Télécharger' }));
+    expect(await reponse).toEqual(['a', 'b']);
+  });
+
+  it('sans la demande, pas de « Tout cocher »', async () => {
+    render(Dialogues);
+    const reponse = cocher('Versions', [{ valeur: 1, libelle: 'A' }], { coches: [true] });
+    await tick();
+    expect(screen.queryByRole('button', { name: 'Tout cocher' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(await reponse).toBeNull();
+  });
+
   it('Annuler rend null', async () => {
     render(Dialogues);
     const reponse = cocher('Versions', [{ valeur: 1, libelle: 'A' }], { coches: [true] });

@@ -6,6 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🧩 La page des mods d'un jeu (0.230.0)
+- [ ] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe : la bande ne montre qu'un résumé et « 🧩 Ouvrir les mods (363) » ;
+      le clic ouvre la page ; Échap revient, et le bouton est de nouveau choisi.
+- [ ] 2. Page : les onglets avec leur nombre ; un filtre, puis le même bouton pour l'enlever ; taper « donkey » dans la
+      recherche ; Échap vide le champ.
+- [ ] 3. Flèches haut/bas dans la liste, le détail à droite suit ; « Voir 50 de plus ».
+- [ ] 4. « Tout télécharger ici » sur un onglet : seuls les ⭐ cochés, « Tout cocher / Tout décocher », le total change ;
+      Annuler.
+- [ ] 5. (Canapé, plus tard) Y ▸ « 🧩 Mods » : s'ouvre tout de suite ; LB/RB ; A déplie, B replie puis revient.
+
 ## 🎵 Version d'un jeu Switch tout-en-un (0.229.2)
 - [x] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe : la ligne « 🎵 La version du jeu utilisée n'est pas connue… » a
       disparu ; le bloc 📦 dit « Mise à jour comprise dans le fichier du jeu, utilisée par Eden ».

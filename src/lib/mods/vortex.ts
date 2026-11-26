@@ -100,10 +100,8 @@ export function chercher(mods: ModVortex[], texte: string): ModVortex[] {
   ).map((o) => o.m);
 }
 
-/** « N sur 282 », ou le mot quand rien ne répond. */
-export function compteRecherche(montres: number, total: number): string {
-  return montres ? `${nb(montres)} sur ${nb(total)}` : 'Aucun mod ne correspond : essaie un autre mot.';
-}
+/** « N sur 282 » : déplacé dans le module commun des recherches (gardé ici pour ne rien casser). */
+export { compteRecherche } from '$lib/dialogues/filtre';
 
 /** Une ligne de mod : son nombre de fichiers. */
 export function detailMod(m: ModVortex): string {

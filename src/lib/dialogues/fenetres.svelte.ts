@@ -37,6 +37,8 @@ export type Dialogue =
       /** Pourquoi ce qui est coché ne peut pas être validé (dit dans la fenêtre, validation impossible), ou `null`. */
       refus?: (valeurs: unknown[]) => string | null;
       libelleValider: string;
+      /** « Tout cocher » et « Tout décocher » au-dessus de la liste (une longue liste : les mods d'un onglet…). */
+      toutCocher?: boolean;
       fermer: (r: unknown[] | null) => void;
     })
   | (Base & { sorte: 'informer'; fermer: () => void })
@@ -153,7 +155,7 @@ export function choisir<T>(titre: string, options: OptionChoix<T>[], message?: s
 export function cocher<T>(
   titre: string,
   options: OptionChoix<T>[],
-  o: { message?: string; coches?: boolean[]; resume?: (valeurs: T[]) => string; refus?: (valeurs: T[]) => string | null; libelleValider?: string } = {},
+  o: { message?: string; coches?: boolean[]; resume?: (valeurs: T[]) => string; refus?: (valeurs: T[]) => string | null; libelleValider?: string; toutCocher?: boolean } = {},
 ): Promise<T[] | null> {
   return ouvrir<T[] | null>((id, fermer) => ({
     id,
@@ -165,6 +167,7 @@ export function cocher<T>(
     resume: o.resume as ((valeurs: unknown[]) => string) | undefined,
     refus: o.refus as ((valeurs: unknown[]) => string | null) | undefined,
     libelleValider: o.libelleValider ?? 'Valider',
+    toutCocher: o.toutCocher,
     fermer: fermer as (r: unknown[] | null) => void,
   }));
 }

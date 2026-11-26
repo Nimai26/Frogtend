@@ -145,9 +145,9 @@
       </li>
       <li>Pendant qu’un mod arrive, le jeu attend : il se lance dès que ses mods sont installés.</li>
       <li>
-        Au canapé (Taodbox) : sur un jeu Switch, appuie sur <strong>Y</strong> puis choisis
-        <strong>🧩 Mises à jour, DLC et mods</strong> ; tout se règle à la manette (A pour allumer ou éteindre, B pour
-        revenir).
+        Au canapé (Taodbox) : sur un jeu Switch, appuie sur <strong>Y</strong> puis choisis <strong>🧩 Mods</strong>
+        (LB / RB pour changer d’onglet) ou <strong>⚙ Réglages du jeu (mises à jour, DLC)</strong> ; tout se règle à la
+        manette (A pour allumer ou éteindre, B pour revenir).
       </li>
     </ul>
   </section>

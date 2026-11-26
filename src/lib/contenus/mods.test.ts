@@ -55,6 +55,25 @@ import {
   messageAllumageMusique,
   plusMusiques,
   titreAllumageMusique,
+  chercherMods,
+  dansOnglet,
+  indexRecherche,
+  libelleFiltre,
+  libelleOnglet,
+  libelleOuvrirMods,
+  libelleToutTelecharger,
+  libelleVoirPlus,
+  ligneAllumesPasUtilises,
+  ligneConflitAvant,
+  nAllumesPasUtilises,
+  nombresParFiltre,
+  nombresParOnglet,
+  pourquoiVide,
+  repondAuFiltre,
+  tableConflits,
+  ONGLETS,
+  PAQUET_BUREAU,
+  PAQUET_CANAPE,
 } from './mods';
 
 /** Un mod de la forme de `mods_switch_lister` (mods_switch.rs, `ModVu`). */
@@ -127,9 +146,10 @@ describe('l’état d’un mod', () => {
     expect(resumeMods([mod({ etat: 'incompatible' }), mod({ cle: 'b-1', etat: 'incompatible' })])).toBe('2 ne vont pas avec ta version');
   });
 
-  it('la ligne de l’auteur dit « licence : aucune » quand il n’y en a pas', () => {
+  it('la ligne de l’auteur dit « licence non précisée » quand il n’y en a pas (jamais « aucune »)', () => {
     expect(ligneAuteur(mod())).toBe('par Wollnashorn · licence : MIT');
-    expect(ligneAuteur(mod({ auteur: '', licence: '' }))).toBe('licence : aucune');
+    expect(ligneAuteur(mod({ auteur: '', licence: '' }))).toBe('licence non précisée');
+    expect(ligneAuteur(mod({ licence: '  ' }))).toBe('par Wollnashorn · licence non précisée');
     expect(ligneAuteur(mod({ licence: 'aucune' }))).toBe('par Wollnashorn · licence : aucune');
   });
 
@@ -255,7 +275,7 @@ describe('le suivi', () => {
     expect(refusModsEnRoute({ sorte: 'reglage', motif })).toBe(false);
     expect(refusModsEnRoute(null)).toBe(false);
     expect(messageModsEnRoute(motif, false)).toBe(`⏳ ${motif}`);
-    expect(messageModsEnRoute(motif, true)).toContain('Y, puis « 🧩 Mises à jour, DLC et mods »');
+    expect(messageModsEnRoute(motif, true)).toContain('Y, puis « 🧩 Mods »');
   });
 });
 
@@ -443,5 +463,92 @@ describe('les musiques de Mario Kart 8 Deluxe (contrat 1.55)', () => {
     expect(blocModsVisible(fiche({ mods: [], musiques: avant({ raison: r }) }))).toBe(true);
     expect(messagePreparer(aPreparer)).toContain('1 mod de musique');
     expect(titrePreparer(MO41)).toBe(`🎵 Préparer les musiques des mods (${MO41} o) ?`);
+  });
+});
+
+describe('la page des mods (✅ Seb 26/11)', () => {
+  const tous = [
+    mod({ cle: 'a', nom: 'A', type: 'technique', interet: 5, etat: 'telecharge', revision_rangee: 1, allume: true }),
+    mod({ cle: 'b', nom: 'B', type: 'cosmetique', interet: 4 }),
+    mod({ cle: 'c', nom: 'C', type: 'CONTENU' as ModSwitchVu['type'] }),
+    mod({ cle: 'd', nom: 'D', type: 'autre', etat: 'revision_dispo', revision: 2, revision_rangee: 1 }),
+    mod({ cle: 'e', nom: 'E', type: 'inventee' as ModSwitchVu['type'], etat: 'incompatible', compat: 'incompatible' }),
+    mod({ cle: 'f', nom: 'F', type: null, amorces: ['pBGM_X'], etat: 'telecharge', revision_rangee: 1, servi: false }),
+    mod({ cle: 'g', nom: 'G', type: 'triche' }),
+  ];
+
+  it('les onglets : une sorte inconnue va dans « Autre », un mod peut être dans plusieurs (⭐, 🎵)', () => {
+    expect(ONGLETS.map((o) => o.cle)).toEqual(['tout', 'recommandes', 'technique', 'cosmetique', 'contenu', 'triche', 'autre', 'musiques', 'pas_decrit']);
+    expect(nombresParOnglet(tous)).toEqual({ tout: 7, recommandes: 2, technique: 1, cosmetique: 1, contenu: 1, triche: 1, autre: 2, musiques: 1, pas_decrit: 1 });
+    expect(dansOnglet(tous[0], 'recommandes') && dansOnglet(tous[0], 'technique')).toBe(true);
+    expect(dansOnglet(tous[5], 'musiques') && dansOnglet(tous[5], 'pas_decrit')).toBe(true);
+    expect(libelleOnglet('cosmetique', 1234)).toMatch(/^Apparence \(1\s234\)$/);
+  });
+
+  it('les filtres d’état suivent les mêmes règles que le résumé', () => {
+    expect(nombresParFiltre(tous)).toEqual({ allumes: 1, telecharges: 3, a_telecharger: 3, majs: 1, incompatibles: 1, plus_servis: 1 });
+    // Un mod grisé déjà rangé compte dans « Téléchargés ».
+    expect(repondAuFiltre(mod({ etat: 'incompatible', revision_rangee: 1 }), 'telecharges')).toBe(true);
+    expect(repondAuFiltre(mod({ etat: 'pas_telecharge', servi: false }), 'a_telecharger')).toBe(false);
+    expect(libelleFiltre('incompatibles', 2)).toBe('Ne vont pas avec ta version (2)');
+  });
+
+  it('la recherche porte sur le nom, la description et l’auteur, sans accents ni majuscules, tous les mots', () => {
+    const l = [mod({ cle: 'x', nom: 'Écran', description: 'large', auteur: 'Zoé' }), mod({ cle: 'y', nom: 'Son', description: 'écran noir', auteur: 'Bob' })];
+    const index = indexRecherche(l);
+    expect(index[0].libelle).toBe('ecran large zoe');
+    expect([...chercherMods(index, 'ECRAN')]).toEqual(['x', 'y']);
+    expect([...chercherMods(index, 'ecran zoe')]).toEqual(['x']);
+    expect([...chercherMods(index, '')]).toEqual(['x', 'y']);
+  });
+
+  it('le conflit se dit avant l’appui, en une table ; rien pour un mod allumé ou grisé', () => {
+    const l = [
+      mod({ cle: 'a', nom: 'A', etat: 'telecharge', revision_rangee: 1, conflits: ['b'] }),
+      mod({ cle: 'b', nom: 'B', etat: 'telecharge', revision_rangee: 1, allume: true }),
+      mod({ cle: 'c', nom: 'C', conflits: ['b'] }),
+    ];
+    const t = tableConflits(l);
+    expect(t.get('a')?.cle).toBe('b');
+    // Seuls les mods ALLUMÉS comptent (même règle que le cœur) : B, allumé, n'a pas de conflit à dire.
+    expect(t.get('b')).toBeNull();
+    expect(ligneConflitAvant(l[0], t.get('a'))).toBe('⚠ Ne va pas avec « B », allumé : l’allumer éteint l’autre.');
+    expect(ligneConflitAvant(l[2], t.get('c'))).toBe('⚠ Ne va pas avec « B », allumé : il arrivera éteint.');
+    expect(ligneConflitAvant(l[1], t.get('b'))).toBeNull();
+    expect(ligneConflitAvant(mod({ etat: 'incompatible' }), l[1])).toBeNull();
+  });
+
+  it('une liste vide dit pourquoi', () => {
+    expect(pourquoiVide('tout', null, '', 0)).toBe('Firehouse ne propose aucun mod pour ce jeu.');
+    expect(pourquoiVide('triche', null, '', 4)).toBe('Aucun mod dans « Triche ».');
+    expect(pourquoiVide('tout', 'allumes', '', 4)).toBe('Aucun mod « Allumés » : enlève le filtre pour tout voir.');
+    expect(pourquoiVide('technique', 'majs', ' zzz ', 4)).toBe('Aucun mod ne correspond à « zzz » dans « Technique » avec ce filtre : essaie un autre mot.');
+  });
+
+  it('les paquets, « Voir N de plus », « Tout télécharger » et le bouton de la bande', () => {
+    expect([PAQUET_BUREAU, PAQUET_CANAPE]).toEqual([50, 25]);
+    expect(libelleVoirPlus(50, 363, 50)).toBe('Voir 50 de plus');
+    expect(libelleVoirPlus(350, 363, 50)).toBe('Voir 13 de plus');
+    expect(libelleToutTelecharger([mod({ taille: 10 }), mod({ taille: 5 })], false)).toBe('⬇ Tout télécharger (2, 15 o)');
+    expect(libelleToutTelecharger([mod({ taille: 10 })], true)).toBe('⬇ Tout télécharger ici (1, 10 o)');
+    expect(libelleOuvrirMods(363)).toBe('🧩 Ouvrir les mods (363)');
+  });
+
+  it('le nombre de « ⚠ Allumé, pas utilisé » de la bande', () => {
+    const dp = { quand: '1', emulateur: 'Eden', raisons: ['« 1080p » pas posé : réglage requis'] };
+    const l = [mod({ allume: true, etat: 'telecharge' }), mod({ nom: 'Autre', allume: true, etat: 'telecharge' })];
+    expect(nAllumesPasUtilises(l, dp)).toBe(1);
+    expect(ligneAllumesPasUtilises(1)).toBe('⚠ Allumé, pas utilisé : 1 mod (voir « À la dernière partie »).');
+    expect(ligneAllumesPasUtilises(0)).toBeNull();
+  });
+
+  it('après une action, le focus vise la commande de la ligne (data-commande) avant son nom', () => {
+    const li = document.createElement('li');
+    li.dataset.cle = 'a';
+    li.innerHTML = '<button data-sorte="nom">A</button><button data-commande>⬇ A</button>';
+    expect(cibleDuFocus([li], 'a', ['a'], null)?.textContent).toBe('⬇ A');
+    // Une commande désactivée : la première commande active de la ligne.
+    li.querySelector('[data-commande]')!.setAttribute('disabled', '');
+    expect(cibleDuFocus([li], 'a', ['a'], null)?.textContent).toBe('A');
   });
 });

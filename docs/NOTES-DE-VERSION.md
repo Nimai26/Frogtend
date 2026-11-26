@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.230.0 — 🧩 Une page pour les mods d'un jeu
+
+- Nouveau : les mods d'un jeu Switch ont leur PAGE (« 🧩 Ouvrir les mods (N) » sur la fiche, ou « ⚙ Gérer le jeu ▸
+  🧩 Mods »), au bureau comme dans Taodbox. Fini de faire défiler des centaines de mods dans la petite bande de droite.
+- Des onglets par type (⭐ recommandés, technique, apparence, contenu, triche, 🎵 musiques…), des filtres (allumés,
+  téléchargés, à télécharger, mises à jour…), une recherche (au bureau), les mods par paquets, et le détail de chaque
+  mod (description, auteur, licence, ce qu'il change). Un conflit avec un autre mod allumé est dit AVANT d'appuyer.
+- « Tout télécharger » ne prend que l'onglet ou le filtre affiché ; seuls les ⭐ recommandés sont cochés d'office ;
+  « Tout cocher / Tout décocher » ; la taille totale est dite.
+- Au canapé : LB/RB changent d'onglet, A déplie un mod, B revient. L'entrée « 🧩 Mises à jour, DLC et mods » devient
+  « ⚙ Réglages du jeu (mises à jour, DLC) ».
+- La bande de droite de la fiche ne garde qu'un résumé (combien de mods, allumés, musiques) et le bouton.
+
 ## 0.229.2 — 🎵 La version d'un jeu Switch « tout-en-un » est reconnue
 
 - Corrigé : pour un jeu Switch dont le fichier contient AUSSI sa mise à jour (un « SuperXCI », comme Mario Kart 8

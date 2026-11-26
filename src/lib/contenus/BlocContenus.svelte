@@ -43,7 +43,8 @@
   } from './contenus';
   import BlocMods from './BlocMods.svelte';
 
-  // `plateforme` : un jeu Switch montre aussi ses mods (🧩, ✅ Seb 18/11). `deplie` : la liste ouverte d'office (Taodbox,
+  // `plateforme` : un jeu Switch montre aussi le résumé de ses mods (🧩, ✅ Seb 18/11 ; la liste est sur la page des
+  // mods, ✅ Seb 26/11). `deplie` : la liste des contenus ouverte d'office (Taodbox,
   // « Réglages du jeu » : rien à déplier à la manette avant de régler).
   // `vide` (lu par l'écran « Réglages du jeu ») : tout est lu, et ni contenus ni mods ne se montrent.
   let {
@@ -409,7 +410,7 @@
     {/if}
   </div>
 {/if}
-{#if plateforme === 'Nintendo Switch'}<BlocMods {id} {titre} {deplie} bind:etatBloc={etatMods} />{/if}
+{#if plateforme === 'Nintendo Switch'}<BlocMods {id} {titre} bind:etatBloc={etatMods} />{/if}
 
 <style>
   .contenus {

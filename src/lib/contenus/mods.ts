@@ -3,6 +3,7 @@
 // ni « exefs », ni « romfs », ni « build id », ni « clé ».
 
 import { duree, taille, type ModSwitchVu, type ModsSwitch, type SuiviModsSwitch } from '$lib/api';
+import { filtrerOptions, simplifier } from '$lib/dialogues/filtre';
 
 const s = (n: number) => (n > 1 ? 's' : '');
 
@@ -78,11 +79,12 @@ export function resumeMods(l: ModSwitchVu[]): string {
   return morceaux.join(', ') || `${l.length} mod${s(l.length)}`;
 }
 
-/** La ligne grise sous le nom : « par Wollnashorn · licence : MIT » (« aucune » si elle n'est pas dite). */
+/** La ligne grise sous le nom : « par Wollnashorn · licence : MIT » (« licence non précisée » si elle n'est pas dite :
+ * « aucune » laissait croire à une interdiction). */
 export function ligneAuteur(m: ModSwitchVu): string {
   const morceaux: string[] = [];
   if (m.auteur.trim()) morceaux.push(`par ${m.auteur.trim()}`);
-  morceaux.push(`licence : ${m.licence.trim() || 'aucune'}`);
+  morceaux.push(m.licence.trim() ? `licence : ${m.licence.trim()}` : 'licence non précisée');
   return morceaux.join(' · ');
 }
 
@@ -362,8 +364,9 @@ export function lignesFinMods(su: SuiviModsSwitch | null | undefined): string[] 
  * `tabindex="-1"`, que la manette ignore). */
 export const COMMANDES_DE_LIGNE = 'button:not([disabled]), [role="switch"]:not([aria-disabled="true"])';
 
-/** Après Télécharger ou Retirer : où rendre le focus — la première commande active de la ligne du mod `cle`, sinon
- * d'une ligne qui la suivait (`ordre` : les clés quand l'action a commencé), sinon l'en-tête du bloc. */
+/** Après Télécharger ou Retirer : où rendre le focus — la commande de la ligne du mod `cle` (`data-commande`, sinon sa
+ * première commande active), sinon d'une ligne qui la suivait (`ordre` : les clés quand l'action a commencé), sinon
+ * l'élément de secours. */
 export function cibleDuFocus(lignes: HTMLElement[], cle: string, ordre: string[], entete: HTMLElement | null): HTMLElement | null {
   const avant = ordre.indexOf(cle);
   const rang = (l: HTMLElement) => {
@@ -373,6 +376,9 @@ export function cibleDuFocus(lignes: HTMLElement[], cle: string, ordre: string[]
   const ici = lignes.filter((l) => l.dataset.cle === cle);
   const suivantes = lignes.filter((l) => l.dataset.cle !== cle && rang(l) > avant).sort((a, b) => rang(a) - rang(b));
   for (const l of [...ici, ...suivantes]) {
+    // La commande de la ligne (interrupteur, Télécharger…) d'abord : le nom, focalisable lui aussi, vient avant elle.
+    const principale = l.querySelector<HTMLElement>('[data-commande]');
+    if (principale?.matches(COMMANDES_DE_LIGNE)) return principale;
     const c = l.querySelector<HTMLElement>(COMMANDES_DE_LIGNE);
     if (c) return c;
   }
@@ -420,5 +426,167 @@ export function refusModsEnRoute(e: unknown): boolean {
 
 /** Le message de ce refus ; au canapé, où le suivre (il n'y a pas de fiche du jeu à l'écran). */
 export function messageModsEnRoute(motif: string, canape: boolean): string {
-  return `⏳ ${motif}${canape ? ' Au canapé : Y, puis « 🧩 Mises à jour, DLC et mods ».' : ''}`;
+  return `⏳ ${motif}${canape ? ' Au canapé : Y, puis « 🧩 Mods ».' : ''}`;
+}
+
+// --- La page des mods d'un jeu (✅ Seb 26/11 : « dans plus de 300 mods, juste dans la petite bande de droite, faire
+// défiler c'est ingérable ») : des onglets par sorte, des filtres d'état, une recherche (bureau), des paquets. ---
+
+/** Le bouton de la bande de droite (toujours lui, même pour 2 mods). */
+export function libelleOuvrirMods(n: number): string {
+  return `🧩 Ouvrir les mods (${n.toLocaleString('fr-FR')})`;
+}
+
+/** Combien de mods sont allumés mais n'ont pas été mis en place à la dernière partie. */
+export function nAllumesPasUtilises(l: ModSwitchVu[], dp: DernierePose | undefined): number {
+  return l.filter((m) => allumePasPose(m, dp)).length;
+}
+
+/** « ⚠ Allumé, pas utilisé : 2 mods » (la bande de droite) ; `null` s'il n'y en a pas. */
+export function ligneAllumesPasUtilises(n: number): string | null {
+  return n ? `⚠ Allumé, pas utilisé : ${nMods(n)} (voir « À la dernière partie »).` : null;
+}
+
+export type Onglet = 'tout' | 'recommandes' | 'technique' | 'cosmetique' | 'contenu' | 'triche' | 'autre' | 'musiques' | 'pas_decrit';
+
+/** Les onglets, dans l'ordre de l'écran (LB / RB au canapé). */
+export const ONGLETS: { cle: Onglet; libelle: string }[] = [
+  { cle: 'tout', libelle: 'Tout' },
+  { cle: 'recommandes', libelle: '⭐ Recommandés' },
+  { cle: 'technique', libelle: 'Technique' },
+  { cle: 'cosmetique', libelle: 'Apparence' },
+  { cle: 'contenu', libelle: 'Contenu' },
+  { cle: 'triche', libelle: 'Triche' },
+  { cle: 'autre', libelle: 'Autre' },
+  { cle: 'musiques', libelle: '🎵 Musiques' },
+  { cle: 'pas_decrit', libelle: '📝 Pas encore décrit' },
+];
+
+const TYPES_CONNUS = ['technique', 'contenu', 'cosmetique', 'triche'];
+
+/** La sorte d'un mod pour les onglets : une sorte inconnue compte dans « Autre » (comme `libelleType`). */
+function sorteDuMod(m: Pick<ModSwitchVu, 'type'>): Onglet | null {
+  if (!m.type) return null;
+  const t = m.type.toLowerCase();
+  return TYPES_CONNUS.includes(t) ? (t as Onglet) : 'autre';
+}
+
+/** Le mod va-t-il dans cet onglet ? (Un mod peut aller dans plusieurs : sa sorte, ⭐, 🎵.) */
+export function dansOnglet(m: ModSwitchVu, o: Onglet): boolean {
+  if (o === 'tout') return true;
+  if (o === 'recommandes') return recommande(m);
+  if (o === 'musiques') return estMusique(m);
+  if (o === 'pas_decrit') return sorteDuMod(m) === null;
+  return sorteDuMod(m) === o;
+}
+
+/** Le nombre de mods de chaque onglet (calculé une fois par lecture de la liste). */
+export function nombresParOnglet(l: ModSwitchVu[]): Record<Onglet, number> {
+  const n = Object.fromEntries(ONGLETS.map((o) => [o.cle, 0])) as Record<Onglet, number>;
+  for (const m of l) for (const o of ONGLETS) if (dansOnglet(m, o.cle)) n[o.cle]++;
+  return n;
+}
+
+/** « Technique (12) ». */
+export function libelleOnglet(o: Onglet, n: number): string {
+  return `${ONGLETS.find((x) => x.cle === o)?.libelle ?? o} (${n.toLocaleString('fr-FR')})`;
+}
+
+export type FiltreEtat = 'allumes' | 'telecharges' | 'a_telecharger' | 'majs' | 'incompatibles' | 'plus_servis';
+
+/** Les filtres d'état (un seul à la fois ; le même bouton l'enlève). */
+export const FILTRES: { cle: FiltreEtat; libelle: string }[] = [
+  { cle: 'allumes', libelle: 'Allumés' },
+  { cle: 'telecharges', libelle: 'Téléchargés' },
+  { cle: 'a_telecharger', libelle: 'À télécharger' },
+  { cle: 'majs', libelle: 'Mises à jour' },
+  { cle: 'incompatibles', libelle: 'Ne vont pas avec ta version' },
+  { cle: 'plus_servis', libelle: 'Plus proposés par Firehouse' },
+];
+
+/** Le mod répond-il au filtre ? (Les mêmes règles que le résumé : `aUnInterrupteur`, `aTelecharger`, `aMettreAJour`.) */
+export function repondAuFiltre(m: ModSwitchVu, f: FiltreEtat): boolean {
+  if (f === 'allumes') return aUnInterrupteur(m) && m.allume;
+  if (f === 'telecharges') return estInstalle(m);
+  if (f === 'a_telecharger') return m.etat === 'pas_telecharge' && m.servi;
+  if (f === 'majs') return m.etat === 'revision_dispo' && m.servi;
+  if (f === 'incompatibles') return m.etat === 'incompatible';
+  return !m.servi;
+}
+
+export function nombresParFiltre(l: ModSwitchVu[]): Record<FiltreEtat, number> {
+  const n = Object.fromEntries(FILTRES.map((f) => [f.cle, 0])) as Record<FiltreEtat, number>;
+  for (const m of l) for (const f of FILTRES) if (repondAuFiltre(m, f.cle)) n[f.cle]++;
+  return n;
+}
+
+/** « Allumés (3) ». */
+export function libelleFiltre(f: FiltreEtat, n: number): string {
+  return `${FILTRES.find((x) => x.cle === f)?.libelle ?? f} (${n.toLocaleString('fr-FR')})`;
+}
+
+/** Le texte où l'on cherche (nom, description, auteur), sans majuscules ni accents : calculé une fois par lecture. */
+export function indexRecherche(l: ModSwitchVu[]): { libelle: string; cle: string }[] {
+  return l.map((m) => ({ libelle: simplifier(`${m.nom} ${m.description} ${m.auteur}`), cle: m.cle }));
+}
+
+/** Les clés des mods qui répondent au texte tapé (tous ses mots, comme les autres recherches de Frogtend). */
+export function chercherMods(index: { libelle: string; cle: string }[], texte: string): Set<string> {
+  return new Set(filtrerOptions(index, texte).map((o) => o.cle));
+}
+
+/** Le mod allumé avec lequel chacun ne va pas (`conflitAvec`, pour toute la liste d'un coup). */
+export function tableConflits(l: ModSwitchVu[]): Map<string, ModSwitchVu | null> {
+  return new Map(l.map((m) => [m.cle, conflitAvec(l, m.cle)]));
+}
+
+/** Le conflit dit AVANT l'appui : « ⚠ Ne va pas avec « X », allumé : l'allumer éteint l'autre. » ; `null` s'il n'y en
+ * a pas ou si le mod est déjà allumé. */
+export function ligneConflitAvant(m: ModSwitchVu, b: ModSwitchVu | null | undefined): string | null {
+  if (!b || m.allume || m.etat === 'incompatible') return null;
+  const suite = aUnInterrupteur(m) ? 'l’allumer éteint l’autre' : 'il arrivera éteint';
+  return `⚠ Ne va pas avec « ${b.nom} », allumé : ${suite}.`;
+}
+
+/** Pourquoi la liste affichée est vide (jamais un écran muet). */
+export function pourquoiVide(o: Onglet, f: FiltreEtat | null, recherche: string, total: number): string {
+  if (!total) return 'Firehouse ne propose aucun mod pour ce jeu.';
+  const ou = o === 'tout' ? '' : ` dans « ${ONGLETS.find((x) => x.cle === o)?.libelle ?? o} »`;
+  if (recherche.trim()) return `Aucun mod ne correspond à « ${recherche.trim()} »${ou}${f ? ' avec ce filtre' : ''} : essaie un autre mot.`;
+  if (f) return `Aucun mod « ${FILTRES.find((x) => x.cle === f)?.libelle ?? f} »${ou} : enlève le filtre pour tout voir.`;
+  return `Aucun mod${ou}.`;
+}
+
+/** La liste se montre par paquets (pas de défilement de 363 lignes d'un coup) : 50 au bureau, 25 au canapé. */
+export const PAQUET_BUREAU = 50;
+export const PAQUET_CANAPE = 25;
+
+/** « Voir 50 de plus » (le dernier paquet peut être plus petit). */
+export function libelleVoirPlus(montres: number, total: number, paquet: number): string {
+  return `Voir ${Math.min(paquet, total - montres).toLocaleString('fr-FR')} de plus`;
+}
+
+/** Le texte de l'accord « Tout télécharger » : ni la liste des mods (la fenêtre les montre en cases, le résumé dit le
+ * total), ni les parties touchées (dites par `ligneTouchentParties`, selon les cases COCHÉES). */
+export function messageToutTelecharger(l: ModSwitchVu[], musiques?: AnnonceMusiques | null): string {
+  const lignes = [
+    'Ils viennent de Firehouse, qui les a vérifiés. Ils valent pour toute la maison, avec Eden comme avec Ryubing.',
+    'Une fois téléchargés, chacun s’allume ou s’éteint d’un simple bouton. Les ⭐ recommandés sont cochés d’office.',
+  ];
+  const m = ligneAccordMusiques(l, musiques);
+  if (m) lignes.push(m);
+  lignes.push('Le téléchargement se fait en arrière-plan ; il s’arrête si une partie commence.');
+  return lignes.join('\n');
+}
+
+/** « 💾 2 mods cochés touchent à tes parties : … » ; `null` si aucun mod coché n'y touche. */
+export function ligneTouchentParties(choisis: ModSwitchVu[]): string | null {
+  const n = choisis.filter((m) => m.touche_sauvegardes).length;
+  if (!n) return null;
+  return `💾 ${n > 1 ? `${nMods(n)} cochés touchent` : '1 mod coché touche'} à tes parties : Frogtend les met à l’abri avant la prochaine partie.`;
+}
+
+/** « Tout télécharger » ne vaut que pour l'onglet ou le filtre affiché (✅ Seb 26/11) : le bouton le dit. */
+export function libelleToutTelecharger(l: ModSwitchVu[], partiel: boolean): string {
+  return `⬇ Tout télécharger${partiel ? ' ici' : ''} (${l.length.toLocaleString('fr-FR')}, ${taille(totalOctets(l))})`;
 }

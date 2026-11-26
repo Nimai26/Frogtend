@@ -37,6 +37,7 @@ import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 import { messageModsEnRoute, refusModsEnRoute } from '$lib/contenus/mods';
+import { adressePageMods, optionModsSwitch } from '$lib/contenus/pageMods';
 import { nomAffiche } from './ludotheque.svelte';
 import { EFFETS_IMAGE, libelleEffet } from './effetsImage';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
@@ -1718,7 +1719,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'refaire' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'parties' | 'delier' | 'retirer' | 'reglagesSwitch';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'refaire' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'modsSwitch' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'parties' | 'delier' | 'retirer' | 'reglagesSwitch';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // 0.229.1 (MK8 Deluxe, 26/11) : un jeu d'émulateur pris pour un jeu PC (installation « aucune » sans lanceur) — la
@@ -1780,8 +1781,15 @@ export async function gererJeu(id: number) {
     options.push({ valeur: 'boutons', libelle: '🗺 Voir les boutons', detail: pcSansEmulateur ? 'ta manette et le clavier — pour ce jeu' : 'ta manette et celle d’origine — pour ce jeu' });
   // Au canapé, un jeu Switch : ses mises à jour, DLC et mods se règlent à la manette (✅ Seb 18/11 : « Il faut pouvoir
   // faire des réglages depuis le canapé voyons ») ; au bureau, c'est le panneau du jeu.
+  // Les mods ont leur propre page (« 🧩 Mods », ci-dessous) : ici, les mises à jour et DLC.
   if (auCanape() && j.installation && j.plateforme === 'Nintendo Switch')
-    options.push({ valeur: 'reglagesSwitch', libelle: '🧩 Mises à jour, DLC et mods', detail: 'les allumer ou les éteindre — pour toute la maison' });
+    options.push({ valeur: 'reglagesSwitch', libelle: '⚙ Réglages du jeu (mises à jour, DLC)', detail: 'allumer ou éteindre les mises à jour et DLC — pour toute la maison' });
+  // La page des mods d'un jeu Switch (✅ Seb 26/11), au bureau et au canapé : le nombre vu en dernier par ce profil, sans
+  // jamais faire attendre le menu ; rien si le jeu n'a aucun mod.
+  if (j.installation && j.plateforme === 'Nintendo Switch') {
+    const o = optionModsSwitch(id);
+    if (o) options.push(o);
+  }
   // Lot S3 (Seb 23/11) : au canapé, un jeu PC — l'abri de ses parties après chaque partie se règle à la manette.
   if (auCanape() && aDesEmplacements(j.plateforme)) {
     // Lot M1 : les mods posés par Vortex s'y retirent et s'y remettent aussi, à la manette — dit seulement s'il y en a.
@@ -1859,6 +1867,7 @@ export async function gererJeu(id: number) {
   }
   else if (c === 'patchs') await choisirPatchsPs3(id);
   else if (c === 'mods') await choisirMods(id);
+  else if (c === 'modsSwitch') await goto(adressePageMods(id, j.titre, auCanape()));
   else if (c === 'triches') await goto(`/triches?jeu=${id}`);
   else if (c === 'succes')
     // Au canapé, sous /taodbox : le mode canapé (manette, plein écran) reste actif. Le jeu DU PC : son jeu Steam, ou

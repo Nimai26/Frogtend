@@ -65,6 +65,10 @@
     l[i] = !l[i];
     cases[d.id] = l;
   }
+  /** « Tout cocher » / « Tout décocher ». */
+  function tout(d: Extract<Dialogue, { sorte: 'cocher' }>, oui: boolean) {
+    cases[d.id] = d.options.map(() => oui);
+  }
 
   function valider(d: Dialogue) {
     if (d.sorte === 'cocher') {
@@ -167,10 +171,17 @@
       {/if}
 
       {#if d.sorte === 'cocher'}
+        {#if d.toutCocher}
+          <div class="actions tout">
+            <button class="btn" onclick={() => tout(d, true)}>Tout cocher</button>
+            <button class="btn" onclick={() => tout(d, false)}>Tout décocher</button>
+          </div>
+        {/if}
         <ul class="choix" role="group" aria-labelledby="dlg-titre-{d.id}">
           {#each d.options as o, i (o)}
             <li>
-              <button class="btn option" role="checkbox" aria-checked={cochees(d)[i]} onclick={() => basculer(d, i)}>
+              <!-- Le focus d'office reste sur la première case (pas sur « Tout cocher », au-dessus). -->
+              <button class="btn option" role="checkbox" aria-checked={cochees(d)[i]} data-premier={d.toutCocher && i === 0 ? '' : undefined} onclick={() => basculer(d, i)}>
                 <span><span aria-hidden="true">{cochees(d)[i] ? '☑' : '☐'}</span> {o.libelle}</span>
                 {#if o.detail}<span class="muted">{o.detail}</span>{/if}
               </button>
@@ -324,6 +335,9 @@
     justify-content: flex-end;
     gap: calc(8 * var(--u));
     flex-wrap: wrap;
+  }
+  .actions.tout {
+    justify-content: flex-start;
   }
   .toasts {
     position: fixed;

@@ -157,11 +157,13 @@ describe('le panneau des mises à jour et DLC Switch', () => {
 
   it('un jeu Switch montre aussi ses mods ; un autre jeu jamais', async () => {
     render(BlocContenus, { id: 7, titre: 'Zelda', plateforme: 'Nintendo Switch' });
-    expect(await screen.findByRole('button', { name: /Mods : 1 allumé sur 1/ })).toBeTruthy();
+    // La bande ne montre qu'un résumé et « Ouvrir les mods (N) » (✅ Seb 26/11) : la liste est sur la page des mods.
+    expect(await screen.findByRole('button', { name: '🧩 Ouvrir les mods (1)' })).toBeTruthy();
+    expect(screen.getByText('1 allumé sur 1')).toBeTruthy();
     cleanup();
     render(BlocContenus, { id: 7, titre: 'Zelda', plateforme: 'Sony Playstation 3' });
     await screen.findByRole('button', { name: /Mises à jour et DLC/ });
-    expect(screen.queryByRole('button', { name: /Mods :/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Ouvrir les mods/ })).toBeNull();
   });
 
   it('« vide » (Réglages du jeu, « Rien à régler ») : seulement une fois lu, et seulement sans rien à montrer', async () => {
