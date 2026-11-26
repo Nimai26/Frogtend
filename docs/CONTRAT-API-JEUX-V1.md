@@ -507,6 +507,7 @@ sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14
 
 ### 1.55 (25/11, en service ; reçu complet le 26/11) — 🎵 musiques de Mario Kart 8 Deluxe : `amorces` et BGM.bars fabriqué
 Reçu par message de la session Firehouse (26/11), texte du BRIEF § 1.55 + exemple réel mesuré le 26/11.
+**Précisions de Firehouse (26/11, réponses à Frogtend)** : nom du dossier commun **« !Firehouse - musiques »** ACCEPTÉ et inscrit au contrat ; Frogtend refuse un romfs/Audio/Static/BGM.bars venu du dossier d'un mod quand le fichier commun est actif ; **X-Code** (conflit | original_absent | introuvable) sur TOUTES les erreurs de bgm-bars, HEAD et GET (Firehouse 3.351.0) ; règle de version : le BGM.bars n'est posé que si la version utilisée est EXACTEMENT X-Version-Jeu, sinon ou inconnue : pas de musique de mod, raison sur la fiche. DK Summit r2 : archive NON vide (circuit complet remplaçant Sherbet Land : romfs/Audio/Resource/Stream/pBGM_GC_SHERBET_LAND_N.bfstm 5,5 Mo, romfs/Course/Ggc_SherbetLand/* 13 fichiers, romfs/UI/<langues>/message.sarc, ym_CoursePict…bntx) ; les 45 mods MK8D à amorces non vides ont TOUS une archive non vide avec romfs/ (fichier inchangé depuis 1.44).
 ⚠️ À ne PAS proposer à la famille avant l'essai réel avec Seb sur Venkman.
 
 - Chaque mod de `/switch/{tid}/mods` porte **`amorces`** : la liste (chaînes) des entrées du `BGM.bars` qu'il remplace ;
