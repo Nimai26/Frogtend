@@ -505,6 +505,17 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### Firehouse 4.0.1 (26/11) — deux gardes, aucune forme changée
+Reçu par message de la session Firehouse (26/11).
+- ENVOIS SWITCH (1.42) : `POST /switch/envois` et `PUT /switch/envois/{id}` peuvent répondre **503** `Retry-After: 300`
+  `{detail}` (stockage des jeux de Firehouse non monté : rien d'écrit, l'envoi est GARDÉ ; réessayer plus tard et
+  reprendre à `X-Recu`/`recu`) et **507** `{detail}` (disque des jeux sans place, marge de 2 Go), à l'annonce ET à
+  chaque morceau. Côté Frogtend (corrigé le 26/11) : un 503 laisse l'envoi en file (« plus tard ») ; un 507 n'arrête
+  pour de bon CE fichier que si le motif dit « trop gros » ; tout autre 507 (plafond par personne, disque plein) met
+  la file en attente, à l'annonce comme pendant les morceaux.
+- `GET /nexus/jeux?media_id=` passe par la garde des jeux : un jeu caché pour ce jeton répond 404, comme un numéro
+  inconnu (pas encore appelé par Frogtend : lot M2).
+
 ### 1.59 (26/11, Firehouse 3.368.0, EN SERVICE, `X-Api-Jeux-Version: 1.59`) — 🧸 COLLECTION : les objets liés à un jeu
 Reçu par message de la session Firehouse (26/11). Ajout compatible, lecture seule, PAS urgent : avec la 1.58, après les
 chantiers en cours. Décision de Seb côté Firehouse : « oui pour les objets, les franchises se rattachent, oui pour les

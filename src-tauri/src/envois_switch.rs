@@ -764,10 +764,14 @@ pub fn refus_par_abandon(motif: &str) -> bool {
     m.contains("abandonn") && m.contains("sans nouvelles")
 }
 
-/// Un 507 PASSAGER : le plafond des envois EN COURS de la personne (100 Go) ; « fichier trop gros » ne l'est pas.
-pub fn plafond_par_personne(detail: &str) -> bool {
-    detail.to_lowercase().contains("par personne") || detail.to_lowercase().contains("pour cette personne")
+/// Un 507 DÉFINITIF pour ce fichier : « fichier trop gros ». Tout autre 507 est passager : le plafond des envois EN
+/// COURS de la personne (100 Go), ou le disque des jeux de Firehouse plein (4.0.1).
+pub fn fichier_trop_gros(detail: &str) -> bool {
+    detail.to_lowercase().contains("trop gros")
 }
+
+/// Un 507 pendant les morceaux : Firehouse n'a plus de place pour l'instant.
+pub const PLUS_DE_PLACE: &str = "Firehouse n'a plus de place pour les envois pour l'instant : l'envoi reprendra plus tard, là où il en était.";
 
 /// Le corps EXACT du POST : rien d'autre (jamais de chemin, de profil ni de PC).
 pub fn corps_post(e: &Envoi, sha: &str, media_id: Option<i64>) -> Value {
@@ -1057,7 +1061,9 @@ async fn traiter_ou_erreur(client: &Client, dossier: &Path, mut e: Envoi, bornes
                 // l'envoi attend le prochain passage ; « fichier trop gros » l'arrête.
                 507 => {
                     let d = detail(&b.octets).unwrap_or_else(|| "Firehouse n'a plus de place pour les envois.".into());
-                    if plafond_par_personne(&d) {
+                    // 4.0.1 : le disque des jeux de Firehouse plein (marge de 2 Go) est passager lui aussi ; seul
+                    // « fichier trop gros » arrête CE fichier pour de bon.
+                    if !fichier_trop_gros(&d) {
                         noter(dossier, &e.chemin, |x| x.motif = Some(d.clone()))?;
                         return Ok(Issue::Arreter(Arret::Motif(d)));
                     }
@@ -1111,6 +1117,12 @@ async fn traiter_ou_erreur(client: &Client, dossier: &Path, mut e: Envoi, bornes
                 Err(Erreur::Perimee(_)) => return Ok(Issue::Arreter(Arret::Demande)),
                 // Lire le fichier de la personne a échoué (verrouillé, raccourci) : il attend, les autres passent.
                 Err(Erreur::Disque(_)) => return source_occupee(dossier, &e, rythme),
+                // 4.0.1 : un 507 en plein envoi (disque des jeux de Firehouse plein, ou plafond par personne) : tout
+                // attend, l'envoi reste en file et reprendra là où Firehouse en est.
+                Err(Erreur::Plein { .. }) => {
+                    noter(dossier, &e.chemin, |x| x.motif = Some(PLUS_DE_PLACE.into()))?;
+                    return Ok(Issue::Arreter(Arret::Motif(PLUS_DE_PLACE.into())));
+                }
                 Err(err @ Erreur::Reseau(_)) => {
                     // La connexion a lâché pendant un morceau : le débit enregistré ne vaut plus rien.
                     let _ = modifier(dossier, |l| l.debit = None);
@@ -1763,6 +1775,36 @@ mod tests {
         assert_eq!(ajouter(&profil, 110, BASE, Some(110), &[c]).unwrap(), 1);
         let l = lire(&profil).unwrap();
         assert_eq!((l.envois.len(), l.envois[0].etat.as_str(), l.envois[0].motif.clone()), (1, ATTENTE, None));
+    }
+
+    #[tokio::test]
+    async fn le_disque_plein_ou_absent_de_firehouse_met_l_envoi_en_pause_jamais_en_echec() {
+        // 4.0.1 : 507 « disque des jeux plein » à l'annonce : passager, l'envoi reste en file avec le motif.
+        let s = MockServer::start();
+        let d = tempfile::tempdir().unwrap();
+        let (profil, e) = preparer(d.path());
+        route1_vide(&s, Some(110));
+        s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/switch/envois");
+            t.status(507).json_body(json!({"detail": "le disque des jeux de Firehouse est plein"}));
+        });
+        let fin = travailler(&client(&s), &profil, PETITS, &Essai::default()).await;
+        assert_eq!(fin, Some(Arret::Motif("le disque des jeux de Firehouse est plein".into())));
+        let l = lire(&profil).unwrap();
+        assert_eq!(l.envois[0].etat, ATTENTE);
+        assert!(l.contient(Path::new(&e.chemin)));
+        // 507 puis 503 sur un morceau : jamais arrêté pour de bon, l'envoi reste en file.
+        for (code, corps) in [(507, json!({"detail": "le disque des jeux de Firehouse est plein"})), (503, json!({"detail": "stockage non monté"}))] {
+            let s = MockServer::start();
+            route1_vide(&s, Some(110));
+            post_nouveau(&s, 0);
+            put(&s, "bytes 0-7/20", code, corps);
+            let fin = travailler(&client(&s), &profil, PETITS, &Essai::default()).await;
+            assert!(matches!(&fin, Some(Arret::Motif(m)) if m.contains("plus tard")), "{code} : {fin:?}");
+            let l = lire(&profil).unwrap();
+            assert_ne!(l.envois[0].etat, ARRETE, "{code}");
+            assert!(l.contient(Path::new(&e.chemin)), "{code}");
+        }
     }
 
     #[tokio::test]
