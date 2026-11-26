@@ -512,7 +512,9 @@ Reçu par message de la session Firehouse (26/11).
   reprendre à `X-Recu`/`recu`) et **507** `{detail}` (disque des jeux sans place, marge de 2 Go), à l'annonce ET à
   chaque morceau. Côté Frogtend (corrigé le 26/11) : un 503 laisse l'envoi en file (« plus tard ») ; un 507 n'arrête
   pour de bon CE fichier que si le motif dit « trop gros » ; tout autre 507 (plafond par personne, disque plein) met
-  la file en attente, à l'annonce comme pendant les morceaux.
+  la file en attente, à l'annonce comme pendant les morceaux. Figé par Firehouse (test) : le refus définitif (plafond
+  par fichier, `jeux.envois.fichier_go`, 32 Go) contient « trop gros », les deux autres 507 ne le contiennent pas ; tout
+  changement de ce texte sera annoncé avant.
 - `GET /nexus/jeux?media_id=` passe par la garde des jeux : un jeu caché pour ce jeton répond 404, comme un numéro
   inconnu (pas encore appelé par Frogtend : lot M2).
 
