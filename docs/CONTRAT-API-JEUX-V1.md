@@ -505,6 +505,68 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.56 (26/11, Firehouse 3.354.0, EN SERVICE, `X-Api-Jeux-Version: 1.56`) — 🕹 les SERVEURS DE JEUX de la maison
+Reçu par message de la session Firehouse (26/11), texte du BRIEF § 1.56 + exemple réel (jeton d'un MINEUR). Partage :
+Firehouse sert le contrat ; Frogtend l'écran « Serveurs Firehouse » et l'exécution des recettes ; la session Minecraft
+le contenu du serveur et du pack client. Lot côté Frogtend : APRÈS MK8 et C4c-2 (décision de Seb, PLAN).
+
+**Droits** (ceux du cockpit, Seb 17/11) : tous (mineurs compris) VOIENT et DEMANDENT le démarrage d'un serveur arrêté ;
+un avancé ou un admin VALIDE (et démarre aussitôt s'il demande lui-même) ; seuls les admins PILOTENT ; les NOMS des
+joueurs = admin seul (le nombre pour tous).
+
+**Routes** (jeton Frogtend) :
+- `GET /serveurs` → `{ok, serveurs: [{cle, nom, jeu, description, image (chemin /static du serveur), statut, depuis,
+  version, motd, caracteristiques {libellé: valeur}, mot_de_passe, adresses {maison, exterieur}, joueurs {nombre, max,
+  noms (admin seul)}, demande {id, cree_le, mienne, demandeur (valideur seul)} | null, droits {voir, demander, valider,
+  piloter}, recette {revision, url}}]}`.
+- `GET /serveurs/{cle}/client` → `{ok, cle, revision, actions [], infos {}, adresses, motif?}` : la RECETTE en ACTIONS
+  d'une liste FERMÉE (tout type inconnu est refusé) :
+  - `installer_jeu` {jeu, boutiques {steam}} ;
+  - `poser_fichiers` ;
+  - `lanceur` ;
+  - `lancer` {programme, arguments, dossier} ou {boutique, steam_appid, adresse, a_la_main} ;
+  - `executer_installeur` {url, version, sha256, taille, arguments_silencieux, admin, signature, detecter_installe,
+    dossier?, argument_dossier?, desinstalleur?, arguments_desinstallation?, precautions?, a_confirmer}.
+- `{adresse}` dans un argument = l'adresse MAISON ou EXTÉRIEURE choisie selon le réseau (réglage, jamais en dur).
+  Maison = IP `10.20.0.10:<port>` ; extérieur = nom (`mc1.hikari-no-sekai.fr:25565`, `pal-1.ecto1.me:8211`).
+- `dossier` (si présent) = RELATIF au dossier réglé par Frogtend ; il remplace `{dossier}` dans `argument_dossier`
+  (Minecraft : `serveurs/minecraft-hikari`, `/DIR="{dossier}"`, conforme au choix de Seb « tout dans Frogtend si
+  possible ») et rend `detecter_installe` et `lancer.programme` relatifs à lui.
+- L'installeur n'est servi que si son sha256 ET sa taille réels sont ceux de la recette (sinon action absente +
+  `motif`).
+- `revision` = empreinte du contenu servi : change avec l'installeur, la commande ou une adresse ; PAS avec une mise à
+  jour du pack Minecraft (passée seule par Prism à chaque lancement). ⛔ Jamais l'adresse du pack, ni la machine, ni le
+  conteneur.
+- `GET|HEAD /serveurs/{cle}/installeur` (Range, `ETag` et `X-Sha256` = sha256 vérifié) ;
+  `POST /serveurs/{cle}/demander` → {ok, …} ; `POST /serveurs/demandes/{id}/{valider|refuser|annuler}` ;
+  `POST /serveurs/{cle}/{demarrer|arreter|redemarrer}` (admin ; le monde est sauvé avant l'arrêt).
+- Erreurs `{ok: false, code, detail}` : 401 `connexion`, 403 `droits`, 404 `introuvable`, 400 `refus` (motif dit).
+
+**Minecraft** : [executer_installeur (Hikari-Setup.exe : Prism Launcher 11.1.1 portable + instance « Hikari »,
+MC 26.3, Fabric 0.20.1, sans droits admin), lancer (`prismlauncher.exe --launch Hikari --server {adresse}`)]. Au 1er
+lancement, Prism demande la connexion Microsoft et télécharge Java seul. Installation silencieuse + `/DIR` PROUVÉES par
+la session Minecraft (essai du 24/11) ; reste l'essai de bout en bout avec Seb par Frogtend. **Précautions** (servies) :
+UNE installation Hikari par compte Windows (désinstaller l'ancienne d'abord : `unins000.exe /VERYSILENT` dans son
+dossier, qui efface TOUT le dossier, captures comprises) ; TOUJOURS passer `/DIR` (sinon l'installeur reprend le dossier
+déjà enregistré ; sur Venkman, l'essai de Seb est dans `D:\Firehouse_IA_Venkman\Minecraft\_essais\hikari-setup\`, à
+garder ou désinstaller AVEC Seb) ; un `/DIR` explicite face à un dossier déjà enregistré reste à confirmer à l'essai.
+
+**Palworld** : [installer_jeu (Steam 1623730), lancer (dans le jeu : « Rejoindre une partie multijoueur », saisir
+l'adresse)].
+
+**Exemple réel** (26/11, jeton d'un MINEUR, Minecraft en ligne donc `demander` faux) : serveur `minecraft-hikari`
+« Hikari no Sekai », statut `en_ligne`, version 26.3, caracteristiques {Version 26.3 (Fabric), Mode survie, Difficulté
+difficile, Combats entre joueurs oui, Accès sur liste blanche, Places 20, Mémoire 10G}, adresses {maison
+10.20.0.10:25565, exterieur mc1.hikari-no-sekai.fr:25565}, joueurs {nombre 0, max 20} (pas de noms), demande null,
+droits {voir: true, demander: false, valider: false, piloter: false}, recette {revision 8ba428124be54a04}. Recette
+Minecraft : executer_installeur {url /api/jeux/v1/serveurs/minecraft-hikari/installeur, version 20261124-1737, sha256
+cd9d346d9bb4a231990a455c2d946c72afacb09119501a05b4ac65194af2d428, taille 30334034, /VERYSILENT /SUPPRESSMSGBOXES
+/NORESTART, admin false, signature null, detecter_installe prismlauncher.exe, dossier serveurs/minecraft-hikari,
+argument_dossier /DIR="{dossier}", desinstalleur unins000.exe /VERYSILENT, precautions [3], a_confirmer} + lancer
+{prismlauncher.exe, [--launch, Hikari, --server, {adresse}], dossier ""} ; infos {minecraft 26.3, loader fabric 0.20.1,
+pack_version 2.6.0, mises_a_jour, premier_lancement}. Palworld : installer_jeu {Palworld, steam 1623730}, lancer
+{boutique steam, 1623730, {adresse}, a_la_main}, adresses {10.20.0.10:8211, pal-1.ecto1.me:8211}.
+
 ### 1.55 (25/11, en service ; reçu complet le 26/11) — 🎵 musiques de Mario Kart 8 Deluxe : `amorces` et BGM.bars fabriqué
 Reçu par message de la session Firehouse (26/11), texte du BRIEF § 1.55 + exemple réel mesuré le 26/11.
 **Précisions de Firehouse (26/11, réponses à Frogtend)** : nom du dossier commun **« !Firehouse - musiques »** ACCEPTÉ et inscrit au contrat ; Frogtend refuse un romfs/Audio/Static/BGM.bars venu du dossier d'un mod quand le fichier commun est actif ; **X-Code** (conflit | original_absent | introuvable) sur TOUTES les erreurs de bgm-bars, HEAD et GET (Firehouse 3.351.0) ; règle de version : le BGM.bars n'est posé que si la version utilisée est EXACTEMENT X-Version-Jeu, sinon ou inconnue : pas de musique de mod, raison sur la fiche. DK Summit r2 : archive NON vide (circuit complet remplaçant Sherbet Land : romfs/Audio/Resource/Stream/pBGM_GC_SHERBET_LAND_N.bfstm 5,5 Mo, romfs/Course/Ggc_SherbetLand/* 13 fichiers, romfs/UI/<langues>/message.sarc, ym_CoursePict…bntx) ; les 45 mods MK8D à amorces non vides ont TOUS une archive non vide avec romfs/ (fichier inchangé depuis 1.44).
