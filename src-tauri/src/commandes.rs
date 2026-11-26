@@ -1315,6 +1315,11 @@ fn apercu_eden(donnees: &std::path::Path, eden: &std::path::Path, fichier: Optio
     contenus.extend(contenus_nsz_vus(&c));
     let mut remarques = crate::eden::remarques_contenus(&c);
     remarques.extend(remarque_inaccessibles(&c));
+    // Un .xci groupé (« SuperXCI ») : sa mise à jour n'est pas un fichier à part, mais Eden s'en sert. Son numéro brut
+    // n'est jamais montré (seule la version d'affichage le serait, et elle n'est pas lue ici).
+    if c.maj.is_none() && c.maj_dans_le_fichier {
+        remarques.insert(0, crate::eden::MAJ_DANS_LE_FICHIER.into());
+    }
     if abime.is_some() {
         remarques.insert(0, crate::contenus_switch::ABIME_SUR_LA_FICHE.into());
     }
@@ -1929,9 +1934,17 @@ async fn base_et_maj_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Option<(
     }
     if d.join("eden.exe").is_file() || std::path::Path::new(&programme).file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("eden.exe")) {
         return tauri::async_runtime::spawn_blocking(move || match crate::eden::lire_contenus(&d, &fichier, &ailleurs) {
-            crate::eden::LectureContenus::Lus(c) => {
+            crate::eden::LectureContenus::Lus(mut c) => {
                 let (choix, _) = crate::contenus_switch::choix_resolu(&donnees, c.base, &crate::ryubing::ids_dlc(&c), c.complet());
-                Some((c.base, crate::eden::maj_utilisee(&c, &choix)))
+                // Comme au lancement (`eden::preparer_contenus`) : la mise à jour embarquée, la NAND, et les coupures
+                // d'Eden telles qu'elles seront après la remise en place des choix (rien n'est écrit ici).
+                crate::eden::completer_maj_embarquee(&d, &fichier, &mut c);
+                let nand = crate::eden::maj_nand(&d, c.base);
+                let texte = std::fs::read_to_string(crate::contenus::ini_eden(&d)).unwrap_or_default();
+                let (maj, dlc) = crate::eden::etat_voulu(&c, &choix);
+                let texte = crate::eden::texte_avec_coupures(&texte, c.base, maj, dlc).unwrap_or(texte);
+                let coupures = crate::eden::lire_coupures(&texte).into_iter().find(|(t, _)| *t == c.base).map(|(_, l)| l).unwrap_or_default();
+                Some((c.base, crate::eden::version_eden(&c, &choix, &coupures, &nand)))
             }
             _ => None,
         })
@@ -3016,9 +3029,9 @@ pub async fn jeu_jouer(
                                 noyau.journaliser(&format!("Eden : contenus du jeu {id} : {n}"));
                             }
                             noyau.journaliser(&format!("Eden : mises à jour et DLC du jeu {id} : {}", c.resume()));
-                            // Les mods Switch (✅ Seb 18/11) : après l'abri et les mises à jour (une mise à jour coupée
-                            // dans Eden : le jeu d'origine).
-                            let utilisee = if c.maj_coupee { Some(0) } else { c.maj_utilisee };
+                            // Les mods Switch (✅ Seb 18/11) : après l'abri et les mises à jour (les coupures d'Eden
+                            // relues sont déjà comptées dans `maj_utilisee`).
+                            let utilisee = c.maj_utilisee;
                             poser_mods_switch(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, c.base, utilisee).await?;
                         }
                         // Mises à jour et DLC pas préparés : les mods sont quand même remis d'accord, version inconnue

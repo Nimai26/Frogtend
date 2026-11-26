@@ -377,8 +377,11 @@ pub struct ContenuLu {
     pub forme: Forme,
 }
 
-/// La version écrite dans un nom : un « v » seul suivi de chiffres (`[v786432]`, `_v196608_`, ` v65536`) ; s'il y en a
-/// plusieurs, la plus grande.
+/// La version BRUTE écrite dans un nom, sous une forme sûre seulement : un « v » seul suivi de chiffres (`[v786432]`,
+/// `_v196608_`, ` v65536`), qui n'est pas le début d'une version d'affichage (`(v3.01`, `v1.2.0` : un point puis un
+/// chiffre) et qui est bien un numéro brut de Nintendo (un multiple de 65536 : `v3` n'en est pas un). S'il y en a
+/// plusieurs, la plus grande ; aucune : `None` (relevé le 26/11 : « Mario Kart 8 Deluxe (v3.01 Incl All DLC) » se
+/// lisait 3).
 pub fn version_du_nom(nom: &str) -> Option<u32> {
     let c: Vec<char> = nom.chars().collect();
     let mut trouvee: Option<u32> = None;
@@ -388,9 +391,12 @@ pub fn version_du_nom(nom: &str) -> Option<u32> {
         }
         let chiffres: String = c[i + 1..].iter().take_while(|x| x.is_ascii_digit()).collect();
         let apres = c.get(i + 1 + chiffres.len());
-        if !chiffres.is_empty() && apres.is_none_or(|x| !x.is_alphanumeric()) {
+        let affichage = apres == Some(&'.') && c.get(i + 2 + chiffres.len()).is_some_and(|x| x.is_ascii_digit());
+        if !chiffres.is_empty() && apres.is_none_or(|x| !x.is_alphanumeric()) && !affichage {
             if let Ok(v) = chiffres.parse::<u32>() {
-                trouvee = Some(trouvee.map_or(v, |t| t.max(v)));
+                if v % 0x10000 == 0 {
+                    trouvee = Some(trouvee.map_or(v, |t| t.max(v)));
+                }
             }
         }
     }
@@ -413,7 +419,17 @@ pub fn nom_a_montrer(chemin: &Path) -> String {
 /// .xci peut grouper le jeu, une mise à jour (et des DLC) : c'est alors un jeu. `None` : rien de lisible avec cette clé,
 /// ou plusieurs jeux différents (ambigu : rien n'est deviné).
 pub fn lire_contenu(chemin: &Path, cle: &CleEntete) -> Resultat<Option<ContenuLu>> {
+    lire_contenu_et_ncas(chemin, cle).map(|(c, _)| c)
+}
+
+/// `lire_contenu`, avec les NCA lus (pour ne pas relire le fichier du jeu).
+fn lire_contenu_et_ncas(chemin: &Path, cle: &CleEntete) -> Resultat<(Option<ContenuLu>, Vec<NcaLu>)> {
     let (forme, l, _) = lire_ncas(chemin, cle)?;
+    let c = contenu_des_ncas(chemin, forme, &l);
+    Ok((c, l))
+}
+
+fn contenu_des_ncas(chemin: &Path, forme: Forme, l: &[NcaLu]) -> Option<ContenuLu> {
     let version = chemin.file_name().and_then(|n| version_du_nom(&n.to_string_lossy()));
     let une_base = |ids: &mut dyn Iterator<Item = u64>| -> Option<u64> {
         let mut b: Vec<u64> = ids.map(base).collect();
@@ -426,17 +442,17 @@ pub fn lire_contenu(chemin: &Path, cle: &CleEntete) -> Resultat<Option<ContenuLu
     let jeux: Vec<u64> = metas.iter().copied().filter(|t| t & 0x1FFF == 0).collect();
     let majs: Vec<u64> = metas.iter().copied().filter(|t| t & 0x1FFF == 0x800).collect();
     if !jeux.is_empty() {
-        return Ok(une_base(&mut jeux.into_iter()).and_then(|b| lu(Sorte::Jeu, b)));
+        return une_base(&mut jeux.into_iter()).and_then(|b| lu(Sorte::Jeu, b));
     }
     if !majs.is_empty() {
-        return Ok(une_base(&mut majs.into_iter()).and_then(|b| lu(Sorte::MiseAJour, b)));
+        return une_base(&mut majs.into_iter()).and_then(|b| lu(Sorte::MiseAJour, b));
     }
     let publiques: Vec<&NcaLu> = l.iter().filter(|n| n.entete.type_contenu == TypeContenu::DonneesPubliques).collect();
     if publiques.is_empty() {
-        return Ok(None);
+        return None;
     }
-    let Some(b) = une_base(&mut publiques.iter().map(|n| n.entete.title_id)) else { return Ok(None) };
-    Ok(lu(Sorte::Dlc(publiques.iter().map(|n| (n.chemin.clone(), n.entete.title_id)).collect()), b))
+    let b = une_base(&mut publiques.iter().map(|n| n.entete.title_id))?;
+    lu(Sorte::Dlc(publiques.iter().map(|n| (n.chemin.clone(), n.entete.title_id)).collect()), b)
 }
 
 /// Ce qui va avec un jeu, trouvé dans le dossier de son fichier (et, avec `contenus_pour_dans`, ailleurs).
@@ -472,6 +488,14 @@ pub struct ContenusDuJeu {
     pub autres_jeux: usize,
     /// Ce qu'a coûté la recherche (pour le journal).
     pub lecture: Lecture,
+    /// La version BRUTE de la mise à jour EMBARQUÉE dans le fichier du jeu lui-même (un .xci groupé, « SuperXCI » : jeu
+    /// + mise à jour + DLC), lue dans son méta-contenu (`version_maj_embarquee`). `None` : pas de mise à jour embarquée,
+    /// ou pas lue (remplie seulement là où elle sert : `eden::completer_maj_embarquee`, au lancement et pour les mods).
+    pub maj_embarquee: Option<u32>,
+    /// Le fichier du jeu est un .xci dont les EN-TÊTES montrent une mise à jour de ce jeu (un Meta `base + 0x800` et au
+    /// moins deux NCA Program du jeu : celui du jeu et celui de la mise à jour). Lu sans rien déchiffrer de plus : c'est
+    /// le signe qu'il faut lire `maj_embarquee`, pas une preuve (seul son méta-contenu en est une).
+    pub maj_dans_le_fichier: bool,
 }
 
 /// Ce qu'a coûté une recherche de contenus.
@@ -632,7 +656,25 @@ struct Cache {
     /// Une empreinte de la clé (un bloc nul chiffré) : jamais la clé.
     cle: String,
     fichiers: std::collections::BTreeMap<String, EntreeCache>,
+    /// Les versions des mises à jour EMBARQUÉES déjà lues (`maj_embarquee_en_cache`), par chemin du jeu.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    embarquees: std::collections::BTreeMap<String, EmbarqueeEnCache>,
 }
+
+/// Une version embarquée lue : le fichier (taille, date), le jeu, l'empreinte des clés de zone, la version (`None` :
+/// aucune mise à jour utilisable dedans).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct EmbarqueeEnCache {
+    taille: u64,
+    secondes: u64,
+    nanos: u32,
+    base: u64,
+    zone: String,
+    version: Option<u32>,
+}
+
+/// Au plus ces versions embarquées gardées dans le cache.
+const MAX_EMBARQUEES: usize = 500;
 
 /// La forme actuelle du cache. 2 (17/11) : les .nsz lus (forme Nsz), et un fichier verrouillé n'y est plus jamais
 /// noté « illisible » — les caches d'avant (format absent = 0) peuvent garder l'un et l'autre à tort : oubliés.
@@ -719,11 +761,12 @@ pub fn identifiant_dlc(ncas: &[(String, u64)]) -> String {
 /// d'abord), les autres copies sont dites dans `doubles`.
 pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cache: Option<&Path>) -> Resultat<Option<ContenusDuJeu>> {
     let debut = std::time::Instant::now();
-    let Some(lu) = lire_contenu(jeu, cle)? else { return Ok(None) };
+    let (lu, ncas_du_jeu) = lire_contenu_et_ncas(jeu, cle)?;
+    let Some(lu) = lu else { return Ok(None) };
     if lu.sorte != Sorte::Jeu {
         return Ok(None);
     }
-    let mut r = ContenusDuJeu { base: lu.base, ..Default::default() };
+    let mut r = ContenusDuJeu { base: lu.base, maj_dans_le_fichier: lu.forme == Forme::Xci && maj_dans_les_ncas(&ncas_du_jeu, lu.base), ..Default::default() };
     let (voisins, incomplet) = candidats(jeu, ailleurs);
     r.parcours_incomplet = incomplet;
     let empreinte = empreinte(cle);
@@ -830,6 +873,8 @@ pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cac
         while neuf.fichiers.len() > MAX_CACHE {
             neuf.fichiers.pop_last();
         }
+        // Les versions embarquées déjà lues (`maj_embarquee_en_cache`) sont gardées telles quelles.
+        neuf.embarquees = ancien.embarquees;
         if neuf != deja {
             if let Err(e) = ecrire_cache(f, &neuf) {
                 r.lecture.erreur_cache = Some(e.to_string());
@@ -946,6 +991,294 @@ pub fn nombre_de_metas(chemin: &Path, cle: &CleEntete) -> Resultat<usize> {
 /// L'identifiant de base d'un jeu lu dans ses en-têtes (`None` : pas de clé lisible, pas un jeu).
 pub fn base_du_jeu(jeu: &Path, cle: &CleEntete) -> Option<u64> {
     lire_contenu(jeu, cle).ok().flatten().filter(|c| c.sorte == Sorte::Jeu).map(|c| c.base)
+}
+
+// --- La mise à jour EMBARQUÉE dans un .xci groupé (« SuperXCI » : jeu + mise à jour + DLC dans un seul fichier). Son
+// numéro de version n'est écrit nulle part en clair : il est dans le méta-contenu (`.cnmt`) du NCA Meta de la mise à
+// jour, dans une section chiffrée en AES-128-CTR. Relu dans LibHac (NcaStructs.cs, NcaHeader.cs, NcaFsHeader.cs,
+// Aes128CtrStorage.cs, Cnmt.cs) et hactool (nca.c, `nca_update_ctr`) :
+// - en-tête clair : génération de clé en 0x206 et 0x220 (la plus grande ; clé n° génération − 1, 0 pour 0 et 1),
+//   index de la clé de zone en 0x207 (0 = application), rights id en 0x230 (nul pour un Meta : pas de clé de titre),
+//   table des sections en 0x240 (début et fin en blocs de 0x200), zone des clés chiffrée en 0x300 (4 × 16 octets,
+//   AES-128-ECB par `key_area_key_application_XX` ; la clé CTR est la n° 2), en-têtes des sections en 0x400 + n × 0x200 ;
+// - en-tête d'une section : type en 0x2 (1 = PFS0), hachage en 0x3 (2 = SHA-256 hiérarchique), chiffrement en 0x4
+//   (1 = aucun, 3 = CTR), niveaux en 0x2C (nombre) et 0x30 (début, taille ; le dernier est le PFS0), compteur haut en
+//   0x140 (u64 petit-boutiste, écrit en grand-boutiste dans le compteur) ; compteur bas = position dans le NCA / 16 ;
+// - `.cnmt` : identifiant du titre (u64) en 0, version (u32) en 8, type en 0xC (0x81 = mise à jour), taille de l'en-tête
+//   étendu (u16) en 0xE, nombre de contenus (u16) en 0x10, puis à 0x20 + en-tête étendu des fiches de 0x38 octets
+//   (identifiant du NCA en 0x20, type en 0x36 : 1 = Program).
+// Eden s'en sert (src/core/loader/xci.cpp `ReadUpdateRaw` : le Program de la mise à jour, s'il est dans la partition
+// secure ; src/core/file_sys/registered_cache.cpp : `versions[cnmt.GetTitleID()] = cnmt.GetTitleVersion()`, v0.2.1).
+
+/// Les clés de zone des NCA (`key_area_key_application_XX` de `prod.keys`). Leur contenu ne s'affiche jamais.
+#[derive(Clone)]
+pub struct ClesZone {
+    cles: Vec<Option<Aes128>>,
+}
+
+impl std::fmt::Debug for ClesZone {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ClesZone(…)")
+    }
+}
+
+/// Les `key_area_key_application_XX = <32 chiffres hexadécimaux>` d'un `prod.keys` (aucune : `None`).
+pub fn cles_zone_du_texte(texte: &str) -> Option<ClesZone> {
+    let mut cles: Vec<Option<Aes128>> = vec![None; 0x20];
+    for l in texte.lines() {
+        let Some((nom, valeur)) = l.split_once('=') else { continue };
+        let nom = nom.trim().to_ascii_lowercase();
+        let Some(n) = nom.strip_prefix("key_area_key_application_").and_then(|n| usize::from_str_radix(n, 16).ok()) else { continue };
+        let Some(o) = hex(valeur.trim()).and_then(|o| <[u8; 16]>::try_from(o).ok()) else { continue };
+        if n < cles.len() {
+            cles[n] = Some(Aes128::new(GenericArray::from_slice(&o)));
+        }
+    }
+    cles.iter().any(Option::is_some).then_some(ClesZone { cles })
+}
+
+/// Les clés de zone lues dans un `prod.keys` (absent, illisible ou sans elles : `None`).
+pub fn cles_zone(prod_keys: &Path) -> Option<ClesZone> {
+    if std::fs::metadata(prod_keys).ok()?.len() > 1 << 20 {
+        return None;
+    }
+    cles_zone_du_texte(&std::fs::read_to_string(prod_keys).ok()?)
+}
+
+/// L'en-tête ENTIER d'un NCA3, en clair (`None` : pas un NCA3 lisible avec cette clé).
+fn entete_complet(cle: &CleEntete, bloc: &[u8]) -> Option<Vec<u8>> {
+    if bloc.len() < TAILLE_ENTETE {
+        return None;
+    }
+    let mut b = bloc[..TAILLE_ENTETE].to_vec();
+    if lire_entete_clair(&b).is_none() {
+        for (i, s) in b.chunks_exact_mut(SECTEUR).enumerate() {
+            xts_secteur(cle, s, i as u64, false);
+        }
+    }
+    (&b[0x200..0x204] == b"NCA3").then_some(b)
+}
+
+/// (Dé)chiffre en AES-128-CTR des octets placés en `position` (multiple de 16) dans le NCA.
+fn ctr(cle: &Aes128, haut: u64, position: u64, donnees: &mut [u8]) {
+    let mut bas = position / 16;
+    for bloc in donnees.chunks_mut(16) {
+        let mut c = [0u8; 16];
+        c[..8].copy_from_slice(&haut.to_be_bytes());
+        c[8..].copy_from_slice(&bas.to_be_bytes());
+        cle.encrypt_block(GenericArray::from_mut_slice(&mut c));
+        for (b, x) in bloc.iter_mut().zip(c.iter()) {
+            *b ^= x;
+        }
+        bas += 1;
+    }
+}
+
+/// Un méta-contenu lu : identifiant, version brute, type, identifiants des NCA Program qu'il nomme (hexa minuscule).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetaLu {
+    pub title_id: u64,
+    pub version: u32,
+    pub type_meta: u8,
+    pub programmes: Vec<String>,
+}
+
+/// Au plus ces octets lus dans la section d'un Meta (un fichier abîmé ne fait jamais lire des Mo).
+const MAX_CNMT: usize = 64 << 10;
+
+/// Le `.cnmt` d'un NCA Meta (`nca` : sa place dans le conteneur ; `clair` : son en-tête entier en clair).
+fn lire_meta(f: &mut std::fs::File, nca: &Entree, clair: &[u8], zone: &ClesZone) -> Option<MetaLu> {
+    if clair[0x207] != 0 || clair[0x230..0x240].iter().any(|b| *b != 0) {
+        return None;
+    }
+    let generation = clair[0x206].max(clair[0x220]).saturating_sub(1) as usize;
+    let mut zone_cles = [0u8; 16];
+    zone_cles.copy_from_slice(&clair[0x320..0x330]);
+    zone.cles.get(generation)?.as_ref()?.decrypt_block(GenericArray::from_mut_slice(&mut zone_cles));
+    let cle_ctr = Aes128::new(GenericArray::from_slice(&zone_cles));
+    for s in 0..4 {
+        let (debut, fin) = (u32_le(clair, 0x240 + s * 0x10) as u64 * 0x200, u32_le(clair, 0x244 + s * 0x10) as u64 * 0x200);
+        let fs = &clair[0x400 + s * 0x200..0x600 + s * 0x200];
+        if fin <= debut || fin > nca.taille || fs[2] != 1 || fs[3] != 2 || !matches!(fs[4], 1 | 3) {
+            continue;
+        }
+        let niveaux = u32_le(fs, 0x2C) as usize;
+        if !(1..=6).contains(&niveaux) {
+            continue;
+        }
+        let pfs0 = debut.checked_add(u64_le(fs, 0x30 + (niveaux - 1) * 0x10))?;
+        let haut = u64_le(fs, 0x140);
+        // Lit `n` octets en clair à la place `pos` du NCA, sans sortir de la section.
+        let mut lire = |pos: u64, n: usize| -> Option<Vec<u8>> {
+            let aligne = pos & !0xF;
+            let longueur = ((pos - aligne) as usize + n + 15) & !0xF;
+            if n > MAX_CNMT || aligne.checked_add(longueur as u64)? > fin {
+                return None;
+            }
+            let mut b = lire_a(f, nca.debut.checked_add(aligne)?, longueur).ok()?;
+            if fs[4] == 3 {
+                ctr(&cle_ctr, haut, aligne, &mut b);
+            }
+            let d = (pos - aligne) as usize;
+            Some(b[d..d + n].to_vec())
+        };
+        let tete = lire(pfs0, 0x10)?;
+        if &tete[..4] != b"PFS0" {
+            continue;
+        }
+        let (n, taille_noms) = (u32_le(&tete, 4) as usize, u32_le(&tete, 8) as usize);
+        if n == 0 || n > 16 || taille_noms > 0x1000 {
+            continue;
+        }
+        let table = lire(pfs0 + 0x10, n * 0x18 + taille_noms)?;
+        let donnees = pfs0 + 0x10 + (n * 0x18 + taille_noms) as u64;
+        for i in 0..n {
+            let e = &table[i * 0x18..(i + 1) * 0x18];
+            let place = u32_le(e, 16) as usize;
+            let nom: String = table[n * 0x18..].get(place..).unwrap_or_default().iter().take_while(|b| **b != 0).map(|b| *b as char).collect();
+            if !nom.to_ascii_lowercase().ends_with(".cnmt") {
+                continue;
+            }
+            let (o, t) = (u64_le(e, 0), u64_le(e, 8) as usize);
+            if t < 0x20 || t > MAX_CNMT {
+                return None;
+            }
+            let c = lire(donnees.checked_add(o)?, t)?;
+            let (etendu, nombre) = (u16::from_le_bytes([c[0xE], c[0xF]]) as usize, u16::from_le_bytes([c[0x10], c[0x11]]) as usize);
+            let mut programmes = Vec::new();
+            for k in 0..nombre {
+                let Some(fiche) = c.get(0x20 + etendu + k * 0x38..0x20 + etendu + (k + 1) * 0x38) else { break };
+                if fiche[0x36] == 1 {
+                    programmes.push(fiche[0x20..0x30].iter().map(|b| format!("{b:02x}")).collect());
+                }
+            }
+            return Some(MetaLu { title_id: u64_le(&c, 0), version: u32_le(&c, 8), type_meta: c[0xC], programmes });
+        }
+    }
+    None
+}
+
+/// Les méta-contenus lisibles d'un conteneur (voir l'en-tête de cette partie).
+pub fn metas(chemin: &Path, cle: &CleEntete, zone: &ClesZone) -> Resultat<Vec<MetaLu>> {
+    let (_, l) = ouvrir(chemin)?;
+    let mut f = std::fs::File::open(chemin)?;
+    let mut r = Vec::new();
+    for e in l.iter().filter(|e| e.nom.to_ascii_lowercase().ends_with(".nca") && e.taille >= TAILLE_ENTETE as u64) {
+        let bloc = lire_a(&mut f, e.debut, TAILLE_ENTETE)?;
+        let Some(clair) = entete_complet(cle, &bloc) else { continue };
+        if TypeContenu::de(clair[0x205]) != Some(TypeContenu::Meta) {
+            continue;
+        }
+        if let Some(m) = lire_meta(&mut f, e, &clair, zone) {
+            r.push(m);
+        }
+    }
+    Ok(r)
+}
+
+/// La version brute de la mise à jour du jeu `base` EMBARQUÉE dans le conteneur `jeu` : un méta-contenu de mise à
+/// jour (type 0x81, identifiant `base + 0x800`) dont le NCA Program est bien DANS le conteneur — sans lui, Eden ne s'en
+/// sert pas (`ReadUpdateRaw`). `None` : pas de mise à jour embarquée utilisable.
+pub fn version_maj_embarquee(jeu: &Path, base: u64, cle: &CleEntete, zone: &ClesZone) -> Resultat<Option<u32>> {
+    let noms: Vec<String> = entrees(jeu)?.iter().map(|e| e.nom.to_ascii_lowercase()).collect();
+    Ok(metas(jeu, cle, zone)?
+        .into_iter()
+        .filter(|m| m.type_meta == 0x81 && m.title_id == base + 0x800 && m.programmes.iter().any(|p| noms.contains(&format!("{p}.nca"))))
+        .map(|m| m.version)
+        .max())
+}
+
+/// Les en-têtes d'un .xci montrent-ils une mise à jour du jeu `base` (voir `ContenusDuJeu::maj_dans_le_fichier`) ?
+fn maj_dans_les_ncas(l: &[NcaLu], base_jeu: u64) -> bool {
+    let meta = l.iter().any(|n| n.entete.type_contenu == TypeContenu::Meta && n.entete.title_id == base_jeu + 0x800);
+    let programmes = l.iter().filter(|n| n.entete.type_contenu == TypeContenu::Programme && base(n.entete.title_id) == base_jeu).count();
+    meta && programmes >= 2
+}
+
+/// Une empreinte des clés de zone (un bloc nul chiffré par chacune) : jamais les clés.
+fn empreinte_zone(zone: &ClesZone) -> String {
+    zone.cles
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            let mut b = [0u8; 16];
+            c.as_ref()?.encrypt_block(GenericArray::from_mut_slice(&mut b));
+            Some(format!("{i:02x}{:02x}{:02x}", b[0], b[1]))
+        })
+        .collect()
+}
+
+/// `version_maj_embarquee` d'un .xci seulement, avec le cache `cache` (le même que `contenus_pour_dans`) : le fichier
+/// inchangé (taille, date) avec les mêmes clés n'est pas relu. Rend la version et ce qu'a coûté la lecture.
+pub fn maj_embarquee_en_cache(jeu: &Path, base: u64, cle: &CleEntete, zone: &ClesZone, cache: Option<&Path>) -> (Option<u32>, Lecture) {
+    let debut = std::time::Instant::now();
+    let mut l = Lecture::default();
+    let Ok(m) = std::fs::metadata(jeu) else { return (None, l) };
+    let (secondes, nanos) = date(&m);
+    let (taille, empreinte_z, chemin) = (m.len(), empreinte_zone(zone), jeu.to_string_lossy().to_string());
+    let mut c: Cache = cache.map(lire_cache).unwrap_or_default();
+    if c.cle != empreinte(cle) || c.format != FORMAT_CACHE {
+        c = Cache { format: FORMAT_CACHE, cle: empreinte(cle), ..Default::default() };
+    }
+    if let Some(e) = c.embarquees.get(&chemin).filter(|e| e.taille == taille && e.secondes == secondes && e.nanos == nanos && e.base == base && e.zone == empreinte_z) {
+        l.en_cache = 1;
+        l.duree_ms = debut.elapsed().as_millis() as u64;
+        return (e.version, l);
+    }
+    l.lus = 1;
+    let lu = match ouvrir(jeu) {
+        Ok((Forme::Xci, _)) => version_maj_embarquee(jeu, base, cle, zone),
+        Ok(_) => Ok(None),
+        Err(e) => Err(e),
+    };
+    let version = match lu {
+        Ok(v) => v,
+        // Le disque ne l'a pas laissé lire, ou il est abîmé : rien n'est noté, il sera relu.
+        Err(_) => {
+            l.duree_ms = debut.elapsed().as_millis() as u64;
+            return (None, l);
+        }
+    };
+    if let Some(f) = cache {
+        c.embarquees.insert(chemin, EmbarqueeEnCache { taille, secondes, nanos, base, zone: empreinte_z, version });
+        while c.embarquees.len() > MAX_EMBARQUEES {
+            c.embarquees.pop_first();
+        }
+        if let Err(e) = ecrire_cache(f, &c) {
+            l.erreur_cache = Some(e.to_string());
+        }
+    }
+    l.duree_ms = debut.elapsed().as_millis() as u64;
+    (version, l)
+}
+
+impl Lecture {
+    /// Ajoute le coût d'une autre lecture à celui-ci.
+    pub fn ajouter(&mut self, autre: &Lecture) {
+        self.duree_ms += autre.duree_ms;
+        self.lus += autre.lus;
+        self.en_cache += autre.en_cache;
+        if self.erreur_cache.is_none() {
+            self.erreur_cache.clone_from(&autre.erreur_cache);
+        }
+    }
+}
+
+/// Un NCA posé SEUL dans un fichier (la NAND d'un émulateur) : son identifiant s'il est un Meta, et son méta-contenu
+/// s'il se lit (`zone` absente ou fausse : `None`). `None` : pas un Meta lisible avec cette clé.
+pub fn meta_d_un_nca(fichier: &Path, cle: &CleEntete, zone: Option<&ClesZone>) -> Option<(u64, Option<MetaLu>)> {
+    let mut f = std::fs::File::open(fichier).ok()?;
+    let taille = f.metadata().ok()?.len();
+    if taille < TAILLE_ENTETE as u64 {
+        return None;
+    }
+    let bloc = lire_a(&mut f, 0, TAILLE_ENTETE).ok()?;
+    let clair = entete_complet(cle, &bloc)?;
+    if TypeContenu::de(clair[0x205]) != Some(TypeContenu::Meta) {
+        return None;
+    }
+    let e = Entree { nom: String::new(), debut: 0, taille };
+    Some((u64_le(&clair, 0x210), zone.and_then(|z| lire_meta(&mut f, &e, &clair, z))))
 }
 
 #[cfg(test)]
@@ -1143,6 +1476,11 @@ pub mod tests {
         );
         assert_eq!(nom_a_montrer(Path::new("Dragon_Quest_Builders_2 v65536.nsp")), "Dragon Quest Builders 2");
         assert_eq!(version_du_nom("Overcooked 2 [0100ABCD].nsp"), None);
+        // Une version d'AFFICHAGE n'est jamais lue comme un numéro brut (relevé MK8D du 26/11 : se lisait 3).
+        assert_eq!(version_du_nom("Mario Kart 8 Deluxe (v3.01 Incl All DLC) (EU) SuperXCI - MBC.xci"), None);
+        assert_eq!(version_du_nom("Fire Emblem Three Houses [v1.2.0][v327680] (nsw2u).nsp"), Some(327680));
+        assert_eq!(version_du_nom("Jeu v3.nsp"), None, "pas un numéro brut de Nintendo");
+        assert_eq!(version_du_nom("Jeu [v1179648].xci"), Some(1179648));
     }
 
     /// Le dossier de Zelda fabriqué dans la forme RELEVÉE sur les vrais fichiers (16/11) : le .xci porte le Meta du jeu
@@ -1523,6 +1861,178 @@ pub mod tests {
         assert_eq!(r.illisibles, ["abime.nsp"]);
         let r = contenus_pour_dans(&jeu, &cle, &[], Some(&cache)).unwrap().unwrap();
         assert_eq!((r.illisibles.as_slice(), r.lecture.en_cache), (["abime.nsp".to_string()].as_slice(), 2));
+    }
+
+    /// Une clé de zone de TEST (jamais une vraie), et sa ligne de `prod.keys`.
+    pub const ZONE_DE_TEST: [u8; 16] = [0x5A, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0];
+
+    pub fn ligne_zone(n: u8) -> String {
+        format!("key_area_key_application_{n:02x} = {}\n", ZONE_DE_TEST.iter().map(|b| format!("{b:02x}")).collect::<String>())
+    }
+
+    /// Un NCA Meta de test comme Nintendo : en-tête NCA3 chiffré, section PFS0 chiffrée en AES-128-CTR (clé de la zone
+    /// des clés n° 2, elle-même chiffrée par la clé de zone de la génération `generation`), qui porte un `.cnmt`.
+    pub fn nca_meta(cle: &CleEntete, generation: u8, title_id: u64, version: u32, type_meta: u8, programmes: &[[u8; 16]]) -> Vec<u8> {
+        // Le .cnmt : en-tête de 0x20, en-tête étendu de 0x10 (comme une vraie mise à jour), une fiche par contenu.
+        let mut cnmt = vec![0u8; 0x30];
+        cnmt[0..8].copy_from_slice(&title_id.to_le_bytes());
+        cnmt[8..12].copy_from_slice(&version.to_le_bytes());
+        cnmt[0xC] = type_meta;
+        cnmt[0xE..0x10].copy_from_slice(&0x10u16.to_le_bytes());
+        cnmt[0x10..0x12].copy_from_slice(&((programmes.len() + 1) as u16).to_le_bytes());
+        let mut controle = vec![0u8; 0x38];
+        controle[0x20..0x30].copy_from_slice(&[0xC0; 16]);
+        controle[0x36] = 3;
+        cnmt.extend(controle);
+        for p in programmes {
+            let mut f = vec![0u8; 0x38];
+            f[0x20..0x30].copy_from_slice(p);
+            f[0x36] = 1;
+            cnmt.extend(f);
+        }
+        let pfs0 = partition(&[("Patch_0100152000022800.cnmt", cnmt)], false);
+        let mut section = vec![0u8; 0x200];
+        section.extend(&pfs0);
+        while section.len() % 0x200 != 0 {
+            section.push(0);
+        }
+        let mut h = vec![0u8; TAILLE_ENTETE];
+        h[0x200..0x204].copy_from_slice(b"NCA3");
+        h[0x205] = 1;
+        h[0x220] = generation;
+        h[0x210..0x218].copy_from_slice(&title_id.to_le_bytes());
+        h[0x240..0x244].copy_from_slice(&6u32.to_le_bytes());
+        h[0x244..0x248].copy_from_slice(&(6 + (section.len() / 0x200) as u32).to_le_bytes());
+        let cle_ctr = [0x3Cu8; 16];
+        let mut chiffree = cle_ctr;
+        Aes128::new(GenericArray::from_slice(&ZONE_DE_TEST)).encrypt_block(GenericArray::from_mut_slice(&mut chiffree));
+        h[0x320..0x330].copy_from_slice(&chiffree);
+        let fs = 0x400;
+        h[fs + 2] = 1;
+        h[fs + 3] = 2;
+        h[fs + 4] = 3;
+        h[fs + 0x2C..fs + 0x30].copy_from_slice(&2u32.to_le_bytes());
+        h[fs + 0x38..fs + 0x40].copy_from_slice(&0x200u64.to_le_bytes());
+        h[fs + 0x40..fs + 0x48].copy_from_slice(&0x200u64.to_le_bytes());
+        h[fs + 0x48..fs + 0x50].copy_from_slice(&(pfs0.len() as u64).to_le_bytes());
+        let haut = 0x0000_0002_0000_0001u64;
+        h[fs + 0x140..fs + 0x148].copy_from_slice(&haut.to_le_bytes());
+        ctr(&Aes128::new(GenericArray::from_slice(&cle_ctr)), haut, TAILLE_ENTETE as u64, &mut section);
+        let mut o = chiffrer_entete(cle, &h);
+        o.extend(section);
+        o
+    }
+
+    pub fn nom_nca(id: &[u8; 16]) -> String {
+        format!("{}.nca", id.iter().map(|b| format!("{b:02x}")).collect::<String>())
+    }
+
+    #[test]
+    fn la_version_d_une_maj_embarquee_se_lit_dans_son_meta_contenu() {
+        // Le relevé réel du 26/11 (Mario Kart 8 Deluxe « SuperXCI ») : jeu + mise à jour 1179648 + DLC dans un .xci,
+        // le nom ne dit que « v3.01 ».
+        let cle = cle_de_test();
+        let zone = cles_zone_du_texte(&format!("header_key = 00\n{}", ligne_zone(2))).unwrap();
+        assert_eq!(format!("{zone:?}"), "ClesZone(…)", "jamais une clé affichée");
+        let (p_jeu, p_maj) = ([0x11u8; 16], [0x22u8; 16]);
+        let d = tempfile::tempdir().unwrap();
+        let x = d.path().join("MK8D (v3.01 Incl All DLC) SuperXCI.xci");
+        let groupe = |avec_program_maj: bool| {
+            let mut l = vec![
+                (nom_nca(&p_jeu), nca(&cle, 0, BASE, 0)),
+                ("a.cnmt.nca".to_string(), nca_meta(&cle, 3, BASE, 0, 0x80, &[p_jeu])),
+                ("b.cnmt.nca".to_string(), nca_meta(&cle, 3, BASE + 0x800, 1179648, 0x81, &[p_maj])),
+                ("d.nca".to_string(), nca(&cle, 5, BASE + 0x1001, 0)),
+                ("c.cnmt.nca".to_string(), nca_meta(&cle, 3, BASE + 0x1001, 65536, 0x82, &[])),
+            ];
+            if avec_program_maj {
+                l.push((nom_nca(&p_maj), nca(&cle, 0, BASE, 0)));
+            }
+            l
+        };
+        let ecrire = |l: Vec<(String, Vec<u8>)>| {
+            let l: Vec<(&str, Vec<u8>)> = l.iter().map(|(n, o)| (n.as_str(), o.clone())).collect();
+            std::fs::write(&x, xci(&l, 0)).unwrap();
+        };
+        ecrire(groupe(true));
+        let m = metas(&x, &cle, &zone).unwrap();
+        assert_eq!(m.iter().map(|m| (m.title_id, m.type_meta, m.version)).collect::<Vec<_>>(), [(BASE, 0x80, 0), (BASE + 0x800, 0x81, 1179648), (BASE + 0x1001, 0x82, 65536)]);
+        assert_eq!(m[1].programmes, ["22222222222222222222222222222222"]);
+        assert_eq!(version_maj_embarquee(&x, BASE, &cle, &zone).unwrap(), Some(1179648));
+        // Toujours un JEU ; et la recherche des contenus à part n'y voit pas de mise à jour (elle est dans le jeu).
+        assert_eq!(lire_contenu(&x, &cle).unwrap().map(|c| c.sorte), Some(Sorte::Jeu));
+        assert!(contenus_pour(&x, &cle).unwrap().unwrap().maj.is_none());
+        // Un autre jeu : rien.
+        assert_eq!(version_maj_embarquee(&x, 0x0100_AAAA_0000_0000, &cle, &zone).unwrap(), None);
+        // Le méta-contenu seul, sans le Program de la mise à jour dans la partition : Eden ne s'en sert pas.
+        ecrire(groupe(false));
+        assert_eq!(version_maj_embarquee(&x, BASE, &cle, &zone).unwrap(), None);
+        // La clé de zone de cette génération manque : rien n'est deviné.
+        ecrire(groupe(true));
+        let autre = cles_zone_du_texte(&ligne_zone(0)).unwrap();
+        assert_eq!(version_maj_embarquee(&x, BASE, &cle, &autre).unwrap(), None);
+        // Une clé de zone fausse : le PFS0 ne se lit pas, rien n'est deviné.
+        let fausse = cles_zone_du_texte("key_area_key_application_02 = 000102030405060708090a0b0c0d0e0f\n").unwrap();
+        assert_eq!(version_maj_embarquee(&x, BASE, &cle, &fausse).unwrap(), None);
+        // Sans aucune clé de zone dans le fichier : pas de clés.
+        assert!(cles_zone_du_texte("header_key = 00\n").is_none());
+    }
+
+    #[test]
+    fn les_generations_de_cle_0_et_1_prennent_la_premiere_cle_de_zone() {
+        // hactool `nca.c` : génération = max(0x206, 0x220), moins 1 si non nulle — 0 et 1 donnent la clé n° 0.
+        let cle = cle_de_test();
+        let zone0 = cles_zone_du_texte(&ligne_zone(0)).unwrap();
+        let d = tempfile::tempdir().unwrap();
+        for generation in [0u8, 1] {
+            let x = d.path().join(format!("g{generation}.xci"));
+            let l = [
+                (nom_nca(&[0x11; 16]), nca(&cle, 0, BASE, 0)),
+                ("a.cnmt.nca".to_string(), nca_meta(&cle, generation, BASE, 0, 0x80, &[[0x11; 16]])),
+                ("b.cnmt.nca".to_string(), nca_meta(&cle, generation, BASE + 0x800, 65536, 0x81, &[[0x22; 16]])),
+                (nom_nca(&[0x22; 16]), nca(&cle, 0, BASE, 0)),
+            ];
+            let l: Vec<(&str, Vec<u8>)> = l.iter().map(|(n, o)| (n.as_str(), o.clone())).collect();
+            std::fs::write(&x, xci(&l, 0)).unwrap();
+            assert_eq!(version_maj_embarquee(&x, BASE, &cle, &zone0).unwrap(), Some(65536), "génération {generation}");
+            let (v, lu) = maj_embarquee_en_cache(&x, BASE, &cle, &zone0, None);
+            assert_eq!((v, lu.lus), (Some(65536), 1));
+            // Le témoin des en-têtes.
+            assert!(contenus_pour(&x, &cle).unwrap().unwrap().maj_dans_le_fichier);
+        }
+        // Un .nsp : jamais lu comme une mise à jour embarquée par le cache (un .xci seulement).
+        let n = d.path().join("j.nsp");
+        std::fs::write(&n, partition(&[("b.cnmt.nca", nca_meta(&cle, 0, BASE + 0x800, 65536, 0x81, &[[0x22; 16]])), (&nom_nca(&[0x22; 16]), nca(&cle, 0, BASE, 0))], false)).unwrap();
+        assert_eq!(maj_embarquee_en_cache(&n, BASE, &cle, &zone0, None).0, None);
+        // Le cache : relu tant que le fichier ne change pas ; gardé quand la recherche des contenus réécrit le cache.
+        let cache = d.path().join("cache.json");
+        let x = d.path().join("g0.xci");
+        assert_eq!(maj_embarquee_en_cache(&x, BASE, &cle, &zone0, Some(&cache)).1.lus, 1);
+        contenus_pour_dans(&x, &cle, &[], Some(&cache)).unwrap();
+        let (v, lu) = maj_embarquee_en_cache(&x, BASE, &cle, &zone0, Some(&cache));
+        assert_eq!((v, lu.lus, lu.en_cache), (Some(65536), 0, 1));
+        // D'autres clés de zone : relu.
+        let zone2 = cles_zone_du_texte(&format!("{}{}", ligne_zone(0), ligne_zone(2))).unwrap();
+        assert_eq!(maj_embarquee_en_cache(&x, BASE, &cle, &zone2, Some(&cache)).1.lus, 1);
+    }
+
+    #[test]
+    fn un_meta_contenu_abime_ne_fait_rien_lire_hors_de_sa_section() {
+        let cle = cle_de_test();
+        let zone = cles_zone_du_texte(&ligne_zone(2)).unwrap();
+        let mut n = nca_meta(&cle, 3, BASE + 0x800, 7, 0x81, &[[0x22; 16]]);
+        // La section annoncée bien plus grande que le NCA : refusée.
+        let mut h = n[..TAILLE_ENTETE].to_vec();
+        for (i, s) in h.chunks_exact_mut(SECTEUR).enumerate() {
+            xts_secteur(&cle, s, i as u64, false);
+        }
+        h[0x244..0x248].copy_from_slice(&0x00FF_FFFFu32.to_le_bytes());
+        n[..TAILLE_ENTETE].copy_from_slice(&chiffrer_entete(&cle, &h));
+        let d = tempfile::tempdir().unwrap();
+        let x = d.path().join("m.nsp");
+        std::fs::write(&x, partition(&[("m.cnmt.nca", n), (&nom_nca(&[0x22; 16]), nca(&cle, 0, BASE, 0))], false)).unwrap();
+        assert!(metas(&x, &cle, &zone).unwrap().is_empty());
+        assert_eq!(version_maj_embarquee(&x, BASE, &cle, &zone).unwrap(), None);
     }
 
     #[test]

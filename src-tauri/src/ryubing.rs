@@ -1237,8 +1237,11 @@ pub struct ContenusPoses {
 }
 
 /// La version de la mise à jour choisie dans `updates.json` (`v` : son contenu, `None` : pas de fichier) : aucune
-/// (`selected` vide ou absent) → 0 ; celle de Frogtend (`notre`) → `version_notre` ; une autre → la version de son nom.
-pub fn version_selectionnee(v: Option<&Value>, notre: Option<&str>, version_notre: Option<u32>) -> Option<u32> {
+/// (`selected` vide ou absent) → 0 ; celle de Frogtend (`notre`) → `version_notre` ; un .xci (le fichier du jeu lui-même
+/// quand Ryubing a choisi la mise à jour qu'il porte : ApplicationLibrary.cs `LoadTitleUpdatesForApplication`, 1.3.3)
+/// → `lire_xci`, qui lit son méta-contenu (jamais son nom : « (v3.01 » n'est pas une version brute) ; une autre → la
+/// version brute de son nom (`version_du_nom`, forme sûre seulement).
+pub fn version_selectionnee(v: Option<&Value>, notre: Option<&str>, version_notre: Option<u32>, lire_xci: &dyn Fn(&Path) -> Option<u32>) -> Option<u32> {
     let Some(v) = v else { return Some(0) };
     let selected = match &v["selected"] {
         Value::Null => return Some(0),
@@ -1251,7 +1254,11 @@ pub fn version_selectionnee(v: Option<&Value>, notre: Option<&str>, version_notr
     if notre.is_some_and(|n| crate::contenus::meme_dossier(n, selected)) {
         return version_notre;
     }
-    crate::switch_nca::version_du_nom(&nom_de(Path::new(selected)))
+    let p = Path::new(selected);
+    if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("xci")) {
+        return lire_xci(p);
+    }
+    crate::switch_nca::version_du_nom(&nom_de(p))
 }
 
 impl ContenusPoses {
@@ -1483,7 +1490,14 @@ pub fn poser_contenus(ryubing: &Path, racine: &Path, c: &crate::switch_nca::Cont
             };
             // La mise à jour que Ryubing utilisera vraiment (`selected` de updates.json), pour griser un mod.
             let effectif = if ok { voulu_vu.or(av.clone()) } else { av.clone() };
-            r.maj_utilisee = version_selectionnee(effectif.as_ref(), notre.as_deref(), c.maj.as_ref().and_then(|m| m.version));
+            // Un .xci choisi (la mise à jour qu'il porte) : lue dans son méta-contenu, avec les clés de la personne et le
+            // cache de Ryubing ; sans clés de zone : inconnue.
+            let lire_xci = |x: &Path| -> Option<u32> {
+                let f = fichier_cles(ryubing, racine)?;
+                let (cle, zone) = (crate::switch_nca::cle_entete(&f)?, crate::switch_nca::cles_zone(&f)?);
+                crate::switch_nca::maj_embarquee_en_cache(x, c.base, &cle, &zone, Some(&cache_contenus(ryubing))).0
+            };
+            r.maj_utilisee = version_selectionnee(effectif.as_ref(), notre.as_deref(), c.maj.as_ref().and_then(|m| m.version), &lire_xci);
             if ok && choix.maj {
                 if r.maj_gardee.is_none() {
                     r.maj = c.maj.as_ref().map(|m| nom_de(&m.chemin));

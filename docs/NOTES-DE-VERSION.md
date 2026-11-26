@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.229.2 — 🎵 La version d'un jeu Switch « tout-en-un » est reconnue
+
+- Corrigé : pour un jeu Switch dont le fichier contient AUSSI sa mise à jour (un « SuperXCI », comme Mario Kart 8
+  Deluxe 3.0.1 chez Seb), Frogtend ne savait pas quelle version l'émulateur utilise : les musiques des mods restaient
+  bloquées (« la version du jeu utilisée n'est pas connue »). Il la lit maintenant dans le fichier, comme Eden.
+- Plus juste : une mise à jour installée dans Eden lui-même, ou coupée dans Eden, est prise en compte ; chez Ryubing,
+  la version n'est plus jamais devinée d'après le nom du fichier.
+- La fiche (📦) dit quand la mise à jour est comprise dans le fichier du jeu.
+
 ## 0.229.1 — 📦 Un jeu Switch n'est plus pris pour un jeu PC
 
 - Corrigé : un jeu de console servi sans sa nature (« nature non dite ») mais dont le fichier est une image de jeu de

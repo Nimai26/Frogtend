@@ -1338,10 +1338,10 @@ mod tests {
         // Une mise à jour en .xci plus récente : c'est elle que les émulateurs prennent, mais elle ne part jamais (et
         // la .nsp, devenue ancienne, non plus).
         let cle = cle_de_test();
-        std::fs::write(d.path().join("Zelda maj [v999999].xci"), xci(&[("m.cnmt.nca", nca(&cle, 1, BASE + 0x800, 0)), ("p.nca", nca(&cle, 0, BASE, 0))], 0)).unwrap();
+        std::fs::write(d.path().join("Zelda maj [v1048576].xci"), xci(&[("m.cnmt.nca", nca(&cle, 1, BASE + 0x800, 0)), ("p.nca", nca(&cle, 0, BASE, 0))], 0)).unwrap();
         let t = trier(&lus(&jeu), &cle_de_test(), &servi, &[], &rien_en_file, false);
         assert!(t.a_envoyer.iter().all(|x| x.role == "dlc"), "{t:?}");
-        assert!(t.ecartes.iter().any(|e| e.nom == "Zelda maj [v999999].xci"));
+        assert!(t.ecartes.iter().any(|e| e.nom == "Zelda maj [v1048576].xci"));
     }
 
     #[test]

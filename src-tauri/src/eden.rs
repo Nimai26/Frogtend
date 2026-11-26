@@ -1011,6 +1011,149 @@ pub fn lire_contenus(eden: &Path, jeu: &Path, ailleurs: &[PathBuf]) -> LectureCo
     }
 }
 
+/// Un .xci groupé (« SuperXCI » : jeu + mise à jour + DLC) porte sa mise à jour, qu'Eden prend quand rien d'autre ne
+/// passe devant (`version_eden`) : sa version brute est lue dans son méta-contenu (switch_nca.rs), jamais dans le nom,
+/// avec le cache d'Eden (`cache_contenus`), et son coût ajouté à `c.lecture`. Seulement si les en-têtes la montrent
+/// (`maj_dans_le_fichier`, un .xci). Appelée au lancement (`preparer_contenus`) et pour les mods
+/// (`commandes::base_et_maj_switch`) seulement.
+pub fn completer_maj_embarquee(eden: &Path, jeu: &Path, c: &mut crate::switch_nca::ContenusDuJeu) {
+    if !c.maj_dans_le_fichier {
+        return;
+    }
+    let Some(f) = crate::contenus::cles_eden(eden) else { return };
+    let (Some(cle), Some(zone)) = (crate::switch_nca::cle_entete(&f), crate::switch_nca::cles_zone(&f)) else { return };
+    let (v, l) = crate::switch_nca::maj_embarquee_en_cache(jeu, c.base, &cle, &zone, Some(&cache_contenus(eden)));
+    c.maj_embarquee = v;
+    c.lecture.ajouter(&l);
+}
+
+/// Ce que dit le panneau 📦 d'un .xci groupé dont la mise à jour est dans le fichier (`maj_dans_le_fichier`).
+pub const MAJ_DANS_LE_FICHIER: &str = "Mise à jour comprise dans le fichier du jeu, utilisée par Eden (aucune autre mise à jour à part n'est trouvée).";
+
+/// Une mise à jour de ce jeu installée dans la NAND ou la SD d'Eden (elle passe devant celle embarquée dans le .xci :
+/// src/core/file_sys/patch_manager.cpp, v0.2.1, l. 649-660 et 688-697).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MajNand {
+    Aucune,
+    /// Sa version brute, lue dans son méta-contenu.
+    Version(u32),
+    /// Peut-être une : la SD d'Eden a des contenus (chiffrés par la console : illisibles), ou le méta-contenu trouvé
+    /// ne se lit pas, ou il y en a plusieurs.
+    Inconnue,
+}
+
+/// Les NCA rangés par Eden dans `registered` : `<id>.nca`, `000000XX\<id>.nca` (registered_cache.cpp
+/// `GetRelativePathFromNcaID`), en fichier ou en dossier `<id>.nca\00` (le premier morceau, où tient un Meta).
+fn ncas_ranges(registered: &Path) -> Vec<PathBuf> {
+    const MAX: usize = 5000;
+    let mut l = Vec::new();
+    let voir = |p: PathBuf, l: &mut Vec<PathBuf>| {
+        if l.len() >= MAX || !p.to_string_lossy().to_ascii_lowercase().ends_with(".nca") {
+            return;
+        }
+        if p.is_file() {
+            l.push(p);
+        } else if p.join("00").is_file() {
+            l.push(p.join("00"));
+        }
+    };
+    for e in std::fs::read_dir(registered).into_iter().flatten().flatten() {
+        let p = e.path();
+        let nom = e.file_name().to_string_lossy().to_string();
+        if nom.len() == 8 && nom.starts_with("000000") && p.is_dir() {
+            for e2 in std::fs::read_dir(&p).into_iter().flatten().flatten() {
+                voir(e2.path(), &mut l);
+            }
+        } else {
+            voir(p, &mut l);
+        }
+    }
+    l
+}
+
+/// La mise à jour de ce jeu (`base`) installée chez Eden : la NAND de l'utilisateur
+/// (`user\nand\user\Contents\registered`), lue en clair ; la SD (`user\sdmc\Nintendo\Contents\registered`) est
+/// chiffrée par la console (NAX0) : un seul contenu dedans et la réponse est `Inconnue`. La NAND système ne porte que le
+/// firmware (jamais une mise à jour de jeu) : pas lue.
+pub fn maj_nand(eden: &Path, base: u64) -> MajNand {
+    let sd = eden.join("user").join("sdmc").join("Nintendo").join("Contents").join("registered");
+    if std::fs::read_dir(&sd).into_iter().flatten().flatten().next().is_some() {
+        return MajNand::Inconnue;
+    }
+    let ncas = ncas_ranges(&eden.join("user").join("nand").join("user").join("Contents").join("registered"));
+    if ncas.is_empty() {
+        return MajNand::Aucune;
+    }
+    let Some(f) = crate::contenus::cles_eden(eden) else { return MajNand::Inconnue };
+    let Some(cle) = crate::switch_nca::cle_entete(&f) else { return MajNand::Inconnue };
+    let zone = crate::switch_nca::cles_zone(&f);
+    let mut trouvees: Vec<Option<u32>> = Vec::new();
+    for n in &ncas {
+        if let Some((tid, meta)) = crate::switch_nca::meta_d_un_nca(n, &cle, zone.as_ref()) {
+            if tid == base + 0x800 {
+                trouvees.push(meta.filter(|m| m.type_meta == 0x81 && m.title_id == tid).map(|m| m.version));
+            }
+        }
+    }
+    match trouvees.as_slice() {
+        [] => MajNand::Aucune,
+        [Some(v)] => MajNand::Version(*v),
+        _ => MajNand::Inconnue,
+    }
+}
+
+/// Une coupure de `[DisabledAddOns]` qui touche une mise à jour : « Update », « Update (NAND) », « Update (SDMC) »,
+/// « Update@<version> ».
+pub fn coupe_une_maj(nom: &str) -> bool {
+    matches!(nom, "Update" | "Update (NAND)" | "Update (SDMC)") || nom.starts_with("Update@")
+}
+
+/// La version brute de la mise à jour qu'Eden v0.2.1 utilisera, d'après src/core/file_sys/patch_manager.cpp
+/// (`PatchRomFS`, l. 599-704) : `coupures` (les noms de `[DisabledAddOns]` de ce jeu, tels qu'ils seront au lancement),
+/// `nand` (`maj_nand`). `Some(0)` : aucune ; `None` : pas connue.
+/// - une mise à jour trouvée à part (dossiers de contenus) : la sienne, sauf « Update » ou « Update@<sa version> » —
+///   alors celle de la NAND (sauf « Update (NAND) »), sinon aucune ; éteinte dans Frogtend : aucune (« Update » est
+///   posé) ;
+/// - sinon, Eden lit la mise à jour embarquée par deux chemins, selon qu'il a parcouru le dossier du jeu (fournisseur
+///   « manuel » : `ext_content_from_game_dirs`) ou non (« PACKED ») ; chacun a ses coupures :
+///   PACKED : « Update », « Update (NAND) » ou « Update (SDMC) » coupent tout ; sinon la NAND passe devant ;
+///   manuel : « Update » ou « Update@<sa version> » la coupent, la NAND prend alors le relais (sauf « Update (NAND) ») ;
+///   les deux chemins donnent la même réponse, ou elle n'est pas connue ;
+/// - rien d'embarqué : comme PACKED, mais sans mise à jour connue la réponse reste inconnue (une peut être dans un
+///   dossier de contenus ajouté par la personne).
+pub fn version_eden(c: &crate::switch_nca::ContenusDuJeu, choix: &crate::contenus_switch::ChoixJeu, coupures: &[String], nand: &MajNand) -> Option<u32> {
+    let a = |n: &str| coupures.iter().any(|x| x == n);
+    let relais_nand = || match nand {
+        MajNand::Aucune => Some(0),
+        MajNand::Version(v) if !a("Update (NAND)") => Some(*v),
+        MajNand::Version(_) => Some(0),
+        MajNand::Inconnue => None,
+    };
+    if let Some(m) = &c.maj {
+        if !choix.maj {
+            return Some(0);
+        }
+        let coupee = a("Update") || m.version.is_some_and(|v| a(&format!("Update@{v}")));
+        return if coupee { relais_nand() } else { m.version };
+    }
+    let packed = if a("Update") || a("Update (NAND)") || a("Update (SDMC)") {
+        Some(0)
+    } else {
+        match nand {
+            MajNand::Version(v) => Some(*v),
+            MajNand::Inconnue => None,
+            MajNand::Aucune => c.maj_embarquee,
+        }
+    };
+    let Some(v) = c.maj_embarquee else { return packed };
+    let manuel = if a("Update") || a(&format!("Update@{v}")) { relais_nand() } else { Some(v) };
+    if packed == manuel {
+        packed
+    } else {
+        None
+    }
+}
+
 /// Le nom d'un dossier à montrer : son dernier élément (jamais le chemin complet).
 pub fn nom_du_dossier(d: &str) -> String {
     Path::new(d).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| d.to_string())
@@ -1025,7 +1168,8 @@ pub struct ContenusPrepares {
     pub ajoutes: Vec<String>,
     pub maj: bool,
     pub dlc: usize,
-    /// Ce qu'Eden a coupé pour ce jeu (`[DisabledAddOns]`) après ce lancement : la mise à jour, tous les DLC.
+    /// Ce qu'Eden a coupé pour ce jeu (`[DisabledAddOns]`) après ce lancement : une mise à jour (« Update », « Update
+    /// (NAND) », « Update (SDMC) », « Update@<version> »), tous les DLC.
     pub maj_coupee: bool,
     pub dlc_coupes: bool,
     /// Des DLC éteints dans Frogtend, mais pas tous : Eden les garde tous actifs (il ne sait couper que tous les DLC).
@@ -1039,18 +1183,18 @@ pub struct ContenusPrepares {
     pub abri_impossible: Option<String>,
     /// Le jeu de base lu (title id de base), pour poser ses mods ensuite.
     pub base: u64,
-    /// La version BRUTE de la mise à jour qu'Eden utilisera : `Some(0)` sans mise à jour (coupée), `None` si elle
-    /// n'est pas connue (aucune trouvée par Frogtend : Eden peut en avoir une dans sa NAND). Sert à griser un mod.
+    /// La version BRUTE de la mise à jour qu'Eden utilisera, coupures relues comprises (`version_eden`) : `Some(0)` sans
+    /// mise à jour (coupée), `None` si elle n'est pas connue. Sert à griser un mod.
     pub maj_utilisee: Option<u32>,
 }
 
-/// La version brute de la mise à jour qu'Eden utilisera pour ce choix (voir `ContenusPrepares::maj_utilisee`).
+/// La version brute de la mise à jour qu'Eden utilisera pour ce choix (voir `ContenusPrepares::maj_utilisee`). Sans
+/// mise à jour trouvée à part : celle EMBARQUÉE dans le fichier du jeu (un .xci groupé), qu'Eden prend alors
+/// (src/core/file_sys/patch_manager.cpp, v0.2.1 : la mise à jour « PACKED » sert quand aucune autre n'est installée) ;
+/// Frogtend n'a pas d'interrupteur pour elle (une coupure « Update » posée dans Eden est lue au lancement,
+/// `maj_coupee`). Ni l'une ni l'autre : inconnue (Eden peut en avoir une dans sa NAND).
 pub fn maj_utilisee(c: &crate::switch_nca::ContenusDuJeu, choix: &crate::contenus_switch::ChoixJeu) -> Option<u32> {
-    match &c.maj {
-        Some(_) if !choix.maj => Some(0),
-        Some(m) => m.version,
-        None => None,
-    }
+    version_eden(c, choix, &[], &MajNand::Aucune)
 }
 
 /// Le dossier est-il dans la liste d'Eden (`texte` : son qt-config.ini) ?
@@ -1347,11 +1491,13 @@ pub fn remarques_contenus(c: &crate::switch_nca::ContenusDuJeu) -> Vec<String> {
 /// d'abord mises à l'abri. `Ok(None)` : rien à faire (Eden pas installé par Frogtend, jeu illisible). Une erreur : à
 /// noter au journal — le jeu se lance quand même (sauf `abri_impossible`).
 pub fn preparer_contenus(donnees: &Path, eden: &Path, jeu: &Path, ailleurs: &[PathBuf], id: i64, ouvert: &dyn Fn(&Path) -> bool) -> Resultat<Option<ContenusPrepares>> {
-    let c = match lire_contenus(eden, jeu, ailleurs) {
+    let mut c = match lire_contenus(eden, jeu, ailleurs) {
         LectureContenus::Lus(c) => c,
         LectureContenus::SansCles => return Err(Erreur::Refus("les clés de la console manquent : mises à jour et DLC non utilisés".into())),
         LectureContenus::PasPortable | LectureContenus::Illisible => return Ok(None),
     };
+    completer_maj_embarquee(eden, jeu, &mut c);
+    let nand = maj_nand(eden, c.base);
     // Les retraits d'avant pas encore repris : rien n'est écrit (ce serait rallumer ce que la personne avait coupé).
     if !crate::contenus_switch::migration_faite(donnees) {
         return Err(Erreur::Refus("les choix des mises à jour et DLC ne sont pas encore repris : rien n'est changé dans Eden à cette partie".into()));
@@ -1395,10 +1541,12 @@ pub fn preparer_contenus(donnees: &Path, eden: &Path, jeu: &Path, ailleurs: &[Pa
         r.notes.push("la section [DisabledAddOns] d'Eden ne se lit pas comme prévu : Frogtend n'y touche pas (les choix ne sont pas remis en place)".into());
     }
     let coupures = texte_avec_coupures(&texte, c.base, maj_voulue, dlc_voulus);
+    // Ce qu'Eden coupera vraiment (relu) : la version utilisée en tient compte (`version_eden`).
     let constater = |r: &mut ContenusPrepares, t: &str| {
         let l = lire_coupures(t).into_iter().find(|(x, _)| *x == c.base).map(|(_, l)| l).unwrap_or_default();
-        r.maj_coupee = l.iter().any(|n| n == "Update");
+        r.maj_coupee = l.iter().any(|n| coupe_une_maj(n));
         r.dlc_coupes = l.iter().any(|n| n == "DLC");
+        r.maj_utilisee = version_eden(&c, &choix, &l, &nand);
     };
     if a_ajouter.is_empty() && coupures.is_none() {
         constater(&mut r, &texte);
@@ -1604,6 +1752,170 @@ mod tests_contenus {
         let texte = lu(&eden);
         assert!(!dossier_dans_la_liste(&texte, &racine), "{texte}");
         assert!(dossier_dans_la_liste(&texte, perso), "celui de la personne reste : {texte}");
+    }
+
+    /// Un SuperXCI de test (jeu + mise à jour `version` embarquée) dans `dossier`, et un Eden aux clés de test (`zone` :
+    /// avec la clé de zone de la génération 3).
+    fn superxci(d: &Path, version: u32, zone: bool, ini: Option<&str>) -> (PathBuf, PathBuf) {
+        use crate::switch_nca::tests::{ligne_zone, nca_meta, nom_nca};
+        let cle = cle_de_test();
+        let eden = eden_avec_cles(d, ini);
+        if zone {
+            let cles = eden.join("user").join("keys").join("prod.keys");
+            let texte = std::fs::read_to_string(&cles).unwrap();
+            std::fs::write(&cles, format!("{texte}{}", ligne_zone(2))).unwrap();
+        }
+        let jeux = d.join("MK8D");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let jeu = jeux.join("MK8D (v3.01 Incl All DLC) SuperXCI.xci");
+        let (p_jeu, p_maj) = ([0x11u8; 16], [0x22u8; 16]);
+        let (n_jeu, n_maj) = (nom_nca(&p_jeu), nom_nca(&p_maj));
+        let l = [
+            (n_jeu.as_str(), nca(&cle, 0, BASE, 0)),
+            ("a.cnmt.nca", nca_meta(&cle, 3, BASE, 0, 0x80, &[p_jeu])),
+            ("b.cnmt.nca", nca_meta(&cle, 3, BASE + 0x800, version, 0x81, &[p_maj])),
+            (n_maj.as_str(), nca(&cle, 0, BASE, 0)),
+        ];
+        std::fs::write(&jeu, xci(&l, 0)).unwrap();
+        (eden, jeu)
+    }
+
+    #[test]
+    fn la_maj_embarquee_d_un_superxci_est_la_version_qu_eden_utilise() {
+        // Le cas réel du 26/11 (Mario Kart 8 Deluxe) : jeu + mise à jour + DLC dans UN .xci, aucune mise à jour à part.
+        let d = tempfile::tempdir().unwrap();
+        let (eden, jeu) = superxci(d.path(), 1179648, false, None);
+        let choix = crate::contenus_switch::ChoixJeu::default();
+        // La simple lecture (panneau 📦, envois) ne déchiffre rien de plus : seul le témoin des en-têtes est là.
+        let LectureContenus::Lus(mut c) = lire_contenus(&eden, &jeu, &[]) else { panic!() };
+        assert!(c.maj.is_none() && c.maj_dans_le_fichier && c.maj_embarquee.is_none());
+        // Sans clés de zone dans prod.keys : la version reste inconnue (comme avant).
+        completer_maj_embarquee(&eden, &jeu, &mut c);
+        assert_eq!((c.maj_embarquee, maj_utilisee(&c, &choix)), (None, None));
+        // Avec elles : la version du méta-contenu de la mise à jour embarquée ; son coût est compté, puis vient du cache.
+        let d2 = tempfile::tempdir().unwrap();
+        let (eden, jeu) = superxci(d2.path(), 1179648, true, None);
+        let LectureContenus::Lus(mut c) = lire_contenus(&eden, &jeu, &[]) else { panic!() };
+        let lus_avant = c.lecture.lus;
+        completer_maj_embarquee(&eden, &jeu, &mut c);
+        assert_eq!(c.maj_embarquee, Some(1179648));
+        assert_eq!(c.lecture.lus, lus_avant + 1);
+        assert_eq!(maj_utilisee(&c, &choix), Some(1179648));
+        let LectureContenus::Lus(mut c2) = lire_contenus(&eden, &jeu, &[]) else { panic!() };
+        let en_cache_avant = c2.lecture.en_cache;
+        completer_maj_embarquee(&eden, &jeu, &mut c2);
+        assert_eq!((c2.maj_embarquee, c2.lecture.en_cache), (Some(1179648), en_cache_avant + 1), "relu du cache");
+        // Un .nsp (pas un .xci) : rien n'est lu.
+        let mut c3 = c.clone();
+        c3.maj_dans_le_fichier = false;
+        c3.maj_embarquee = None;
+        completer_maj_embarquee(&eden, &jeu, &mut c3);
+        assert_eq!(c3.maj_embarquee, None);
+        // Une mise à jour trouvée à part passe devant (son choix et sa version, comme avant).
+        let a_part = crate::switch_nca::ContenuLu { chemin: d2.path().join("maj [v1245184].nsp"), sorte: crate::switch_nca::Sorte::MiseAJour, base: BASE, version: Some(1245184), forme: crate::switch_nca::Forme::Nsp };
+        let c4 = crate::switch_nca::ContenusDuJeu { maj: Some(a_part), ..c.clone() };
+        assert_eq!(maj_utilisee(&c4, &choix), Some(1245184));
+        assert_eq!(maj_utilisee(&c4, &crate::contenus_switch::ChoixJeu { maj: false, ..Default::default() }), Some(0));
+    }
+
+    #[test]
+    fn les_coupures_d_eden_decident_de_la_maj_embarquee() {
+        // patch_manager.cpp (v0.2.1) l. 599-704 : deux chemins (PACKED, ou le fournisseur « manuel » quand Eden parcourt
+        // le dossier du jeu), chacun ses coupures.
+        let choix = crate::contenus_switch::ChoixJeu::default();
+        let c = crate::switch_nca::ContenusDuJeu { base: BASE, maj_embarquee: Some(1179648), maj_dans_le_fichier: true, ..Default::default() };
+        let v = |noms: &[&str], nand: &MajNand| version_eden(&c, &choix, &noms.iter().map(|n| n.to_string()).collect::<Vec<_>>(), nand);
+        assert_eq!(v(&[], &MajNand::Aucune), Some(1179648));
+        assert_eq!(v(&["Update"], &MajNand::Aucune), Some(0), "« Update » coupe les deux chemins");
+        assert_eq!(v(&["Update (NAND)", "Update@1179648"], &MajNand::Aucune), Some(0));
+        // Une seule des deux coupures : un chemin la coupe, l'autre non — Eden dépend de son réglage : pas connue.
+        assert_eq!(v(&["Update (NAND)"], &MajNand::Aucune), None);
+        assert_eq!(v(&["Update (SDMC)"], &MajNand::Aucune), None);
+        assert_eq!(v(&["Update@1179648"], &MajNand::Aucune), None);
+        // La coupure d'une AUTRE version ne touche pas celle-ci ; « DLC » non plus.
+        assert_eq!(v(&["Update@65536", "DLC"], &MajNand::Aucune), Some(1179648));
+        // Une mise à jour dans la NAND : PACKED la prend, le fournisseur manuel garde l'embarquée → pas connue ; même
+        // version des deux côtés : connue.
+        assert_eq!(v(&[], &MajNand::Version(1245184)), None);
+        assert_eq!(v(&[], &MajNand::Version(1179648)), Some(1179648));
+        // « Update » : PACKED coupe aussi la NAND, mais le chemin manuel la reprend (l. 661-683) : pas connue.
+        assert_eq!(v(&["Update"], &MajNand::Version(1245184)), None);
+        assert_eq!(v(&["Update", "Update (NAND)"], &MajNand::Version(1245184)), Some(0));
+        assert_eq!(v(&[], &MajNand::Inconnue), None);
+        // Rien d'embarqué ni à part : la NAND seule (PACKED n'existe pas, le manuel n'a rien pour ce jeu).
+        let vide = crate::switch_nca::ContenusDuJeu { base: BASE, ..Default::default() };
+        let w = |noms: &[&str], nand: &MajNand| version_eden(&vide, &choix, &noms.iter().map(|n| n.to_string()).collect::<Vec<_>>(), nand);
+        assert_eq!(w(&[], &MajNand::Version(1245184)), Some(1245184));
+        assert_eq!(w(&["Update (NAND)"], &MajNand::Version(1245184)), Some(0));
+        assert_eq!(w(&[], &MajNand::Aucune), None, "une peut être dans un dossier ajouté par la personne");
+        // Une mise à jour à part coupée par sa version : la NAND prend le relais.
+        let a_part = crate::switch_nca::ContenuLu { chemin: PathBuf::from("maj [v65536].nsp"), sorte: crate::switch_nca::Sorte::MiseAJour, base: BASE, version: Some(65536), forme: crate::switch_nca::Forme::Nsp };
+        let ext = crate::switch_nca::ContenusDuJeu { base: BASE, maj: Some(a_part), ..Default::default() };
+        let x = |noms: &[&str], nand: &MajNand| version_eden(&ext, &choix, &noms.iter().map(|n| n.to_string()).collect::<Vec<_>>(), nand);
+        assert_eq!(x(&[], &MajNand::Version(131072)), Some(65536));
+        assert_eq!(x(&["Update@65536"], &MajNand::Version(131072)), Some(131072));
+        assert_eq!(x(&["Update@65536", "Update (NAND)"], &MajNand::Version(131072)), Some(0));
+        assert_eq!(x(&["Update"], &MajNand::Aucune), Some(0));
+        // Les noms qui touchent une mise à jour.
+        for n in ["Update", "Update (NAND)", "Update (SDMC)", "Update@1179648"] {
+            assert!(coupe_une_maj(n), "{n}");
+        }
+        assert!(!coupe_une_maj("DLC") && !coupe_une_maj("Mod") && !coupe_une_maj("Updates"));
+    }
+
+    #[test]
+    fn au_lancement_une_coupure_update_d_eden_donne_le_jeu_d_origine() {
+        let ini = ecrire_coupures("[UI]\r\ntheme=dark\r\n", &[(BASE, vec!["Update".into()])]);
+        let d = tempfile::tempdir().unwrap();
+        let (eden, jeu) = superxci(d.path(), 1179648, true, Some(&ini));
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 7, &|_| false).unwrap().unwrap();
+        assert!(r.maj_coupee && !r.coupures_ecrites, "{r:?}");
+        assert_eq!(r.maj_utilisee, Some(0));
+        // « Update (NAND) » seul : coupé pour PACKED, pas pour le fournisseur manuel → pas connue (jamais la mauvaise).
+        let ini = ecrire_coupures("[UI]\r\ntheme=dark\r\n", &[(BASE, vec!["Update (NAND)".into()])]);
+        let d = tempfile::tempdir().unwrap();
+        let (eden, jeu) = superxci(d.path(), 1179648, true, Some(&ini));
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 7, &|_| false).unwrap().unwrap();
+        assert!(r.maj_coupee, "{r:?}");
+        assert_eq!(r.maj_utilisee, None);
+        // Sans coupure : la version embarquée.
+        let d = tempfile::tempdir().unwrap();
+        let (eden, jeu) = superxci(d.path(), 1179648, true, Some("[UI]\r\ntheme=dark\r\n"));
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 7, &|_| false).unwrap().unwrap();
+        assert!(!r.maj_coupee, "{r:?}");
+        assert_eq!(r.maj_utilisee, Some(1179648));
+    }
+
+    #[test]
+    fn une_maj_installee_dans_la_nand_d_eden_se_lit() {
+        use crate::switch_nca::tests::nca_meta;
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let (eden, _) = superxci(d.path(), 1179648, true, None);
+        let reg = eden.join("user").join("nand").join("user").join("Contents").join("registered");
+        assert_eq!(maj_nand(&eden, BASE), MajNand::Aucune, "pas de NAND");
+        // Rangée comme Eden : `000000XX\<id>.nca` ; un autre jeu à côté ne compte pas.
+        std::fs::create_dir_all(reg.join("000000AB")).unwrap();
+        std::fs::write(reg.join("000000AB").join("0123456789abcdef0123456789abcdef.cnmt.nca"), nca_meta(&cle, 3, BASE + 0x800, 1245184, 0x81, &[[0x33; 16]])).unwrap();
+        std::fs::write(reg.join("000000AB").join("fedcba9876543210fedcba9876543210.cnmt.nca"), nca_meta(&cle, 3, 0x0100_AAAA_0000_0800, 65536, 0x81, &[])).unwrap();
+        assert_eq!(maj_nand(&eden, BASE), MajNand::Version(1245184));
+        // En dossier `<id>.nca\00`.
+        let d2 = tempfile::tempdir().unwrap();
+        let (eden2, _) = superxci(d2.path(), 1179648, true, None);
+        let reg2 = eden2.join("user").join("nand").join("user").join("Contents").join("registered");
+        std::fs::create_dir_all(reg2.join("abababababababababababababababab.cnmt.nca")).unwrap();
+        std::fs::write(reg2.join("abababababababababababababababab.cnmt.nca").join("00"), nca_meta(&cle, 3, BASE + 0x800, 131072, 0x81, &[])).unwrap();
+        assert_eq!(maj_nand(&eden2, BASE), MajNand::Version(131072));
+        // Deux mises à jour du jeu : laquelle ? pas connue.
+        std::fs::write(reg2.join("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd.cnmt.nca"), nca_meta(&cle, 3, BASE + 0x800, 196608, 0x81, &[])).unwrap();
+        assert_eq!(maj_nand(&eden2, BASE), MajNand::Inconnue);
+        // Une SD avec des contenus (chiffrés par la console) : pas connue.
+        let sd = eden.join("user").join("sdmc").join("Nintendo").join("Contents").join("registered");
+        std::fs::create_dir_all(sd.join("00000001")).unwrap();
+        assert_eq!(maj_nand(&eden, BASE), MajNand::Inconnue);
     }
 
     #[test]
@@ -2324,5 +2636,80 @@ mod tests {
         assert!(matches!(utilisateur_du_profil(d.path(), "Seb"), Err(Erreur::Prevenir(_))));
         assert_eq!(lire(&std::fs::read(fichier_profils(d.path())).unwrap()), l, "rien n'a changé");
         assert_eq!(utilisateur_du_profil(d.path(), "P7").unwrap().index, 7);
+    }
+}
+
+/// Sur le vrai Mario Kart 8 Deluxe de Seb (SuperXCI : jeu + mise à jour + DLC dans un seul .xci), en LECTURE SEULE : le
+/// chemin de `base_et_maj_switch` (commandes.rs) refait étape par étape, sans cache écrit ni choix écrit, jamais une
+/// clé affichée.
+#[cfg(test)]
+mod essais_reels {
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    #[ignore]
+    fn essai_mk8d_version_utilisee() {
+        let donnees = PathBuf::from(std::env::var("APPDATA").unwrap()).join("fr.hikari-no-sekai.frogtend");
+        let pc: serde_json::Value = serde_json::from_slice(&std::fs::read(donnees.join("pc.json")).unwrap()).unwrap();
+        let e = crate::choix_emulateur::pour_le_jeu(&pc["reglages"], "Nintendo Switch", 24188, None).expect("aucun émulateur Switch réglé");
+        println!("== émulateur réglé : {} ({})", e.nom, e.programme);
+        let d = Path::new(&e.programme).parent().unwrap().to_path_buf();
+        let jeu = Path::new(r"D:\Jeux\Switch\Mario Kart 8 Deluxe (2017)\Mario Kart 8 Deluxe (v3.01 Incl All DLC) (EU) SuperXCI - MBC.xci");
+        let ailleurs = vec![jeu.parent().unwrap().to_path_buf(), PathBuf::from(r"D:\Jeux\Switch")];
+        let cle = if crate::ryubing::est_ryubing(&e.programme) {
+            println!("== Ryubing portable : {}", crate::ryubing::portable(&d));
+            crate::ryubing::cle_entete(&d, &crate::ryubing::racine(&d, "Sebastien"))
+        } else {
+            println!("== Eden portable : {}", super::portable(&d));
+            crate::contenus::cles_eden(&d).and_then(|f| crate::switch_nca::cle_entete(&f))
+        };
+        println!("== clé des en-têtes trouvée : {}", cle.is_some());
+        let cle = cle.expect("pas de clé");
+        match crate::switch_nca::ncas(jeu, &cle) {
+            Ok((n, ill)) => {
+                for x in &n {
+                    println!("   {} | {:?} | {:016x}", x.chemin, x.entete.type_contenu, x.entete.title_id);
+                }
+                println!("   {} NCA lus, {} illisibles", n.len(), ill);
+            }
+            Err(e) => println!("   NCA pas lus : {e:?}"),
+        }
+        println!("== lire_contenu : {:?}", crate::switch_nca::lire_contenu(jeu, &cle).map(|c| c.map(|c| (c.sorte, format!("{:016x}", c.base), c.version))));
+        // Sans cache (`None`) : rien n'est écrit chez l'émulateur.
+        let mut c = crate::switch_nca::contenus_pour_dans(jeu, &cle, &ailleurs, None).unwrap().expect("pas lu comme un jeu");
+        // Comme `lire_contenus` (sans son cache écrit) : la mise à jour embarquée, lue dans les méta-contenus.
+        let zone = crate::contenus::cles_eden(&d).and_then(|f| crate::switch_nca::cles_zone(&f));
+        println!("== clés de zone trouvées : {}", zone.is_some());
+        if let Some(z) = &zone {
+            for m in crate::switch_nca::metas(jeu, &cle, z).unwrap() {
+                println!("   méta {:016x} type {:#x} version {} ; Program {:?}", m.title_id, m.type_meta, m.version, m.programmes);
+            }
+            // Comme `completer_maj_embarquee`, SANS cache (rien n'est écrit chez Eden).
+            if c.maj_dans_le_fichier {
+                let (v, l) = crate::switch_nca::maj_embarquee_en_cache(jeu, c.base, &cle, z, None);
+                c.maj_embarquee = v;
+                c.lecture.ajouter(&l);
+            }
+        }
+        println!("== témoin des en-têtes : {} ; mise à jour embarquée : {:?}", c.maj_dans_le_fichier, c.maj_embarquee);
+        println!("== version lue dans le nom : {:?}", crate::switch_nca::version_du_nom(&jeu.file_name().unwrap().to_string_lossy()));
+        println!("== base {:016x} ; maj {:?} ; {} maj(s) ancienne(s) ; {} DLC à part ; complet {} ; {}", c.base, c.maj.as_ref().map(|m| (m.chemin.clone(), m.version)), c.majs_anciennes.len(), c.dlc.len(), c.complet(), c.lecture.resume());
+        let choix = crate::contenus_switch::charger(&donnees).0.jeu(c.base);
+        println!("== choix : maj allumée {}", choix.maj);
+        if crate::ryubing::est_ryubing(&e.programme) {
+            let a = crate::ryubing::poser_contenus(&d, &crate::ryubing::racine(&d, "Sebastien"), &c, &choix, false);
+            println!("== Ryubing, version utilisée : {:?}", a.map(|a| a.maj_utilisee));
+        } else {
+            // Comme `base_et_maj_switch` : la NAND, et les coupures telles qu'elles seront au lancement (calculées en
+            // mémoire, qt-config.ini seulement lu).
+            let nand = super::maj_nand(&d, c.base);
+            println!("== NAND / SD d'Eden : {nand:?}");
+            let texte = std::fs::read_to_string(crate::contenus::ini_eden(&d)).unwrap_or_default();
+            let (maj, dlc) = super::etat_voulu(&c, &choix);
+            let texte = super::texte_avec_coupures(&texte, c.base, maj, dlc).unwrap_or(texte);
+            let coupures = super::lire_coupures(&texte).into_iter().find(|(t, _)| *t == c.base).map(|(_, l)| l).unwrap_or_default();
+            println!("== coupures d'Eden pour ce jeu : {coupures:?}");
+            println!("== Eden, version utilisée : {:?}", super::version_eden(&c, &choix, &coupures, &nand));
+        }
     }
 }

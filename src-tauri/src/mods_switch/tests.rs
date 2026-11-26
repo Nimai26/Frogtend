@@ -512,12 +512,19 @@ fn un_build_id_sans_version_brute_n_est_jamais_grise() {
 fn la_version_utilisee_par_ryubing_se_lit_dans_sa_liste() {
     use crate::ryubing::version_selectionnee;
     let notre = "D:\\Jeux\\Zelda\\Zelda [v786432].nsp";
-    assert_eq!(version_selectionnee(None, Some(notre), Some(786432)), Some(0), "pas de liste : aucune mise à jour");
-    assert_eq!(version_selectionnee(Some(&json!({"selected": "", "paths": [notre]})), Some(notre), Some(786432)), Some(0));
-    assert_eq!(version_selectionnee(Some(&json!({"selected": notre})), Some(notre), Some(786432)), Some(786432));
-    assert_eq!(version_selectionnee(Some(&json!({"selected": "E:/Autre/Zelda [v851968].nsp"})), Some(notre), Some(786432)), Some(851968));
-    assert_eq!(version_selectionnee(Some(&json!({"selected": "E:/Autre/Zelda.nsp"})), Some(notre), Some(786432)), None, "nom sans version : inconnue");
-    assert_eq!(version_selectionnee(Some(&json!({"selected": 5})), None, None), None);
+    assert_eq!(version_selectionnee(None, Some(notre), Some(786432), &|_| None), Some(0), "pas de liste : aucune mise à jour");
+    assert_eq!(version_selectionnee(Some(&json!({"selected": "", "paths": [notre]})), Some(notre), Some(786432), &|_| None), Some(0));
+    assert_eq!(version_selectionnee(Some(&json!({"selected": notre})), Some(notre), Some(786432), &|_| None), Some(786432));
+    assert_eq!(version_selectionnee(Some(&json!({"selected": "E:/Autre/Zelda [v851968].nsp"})), Some(notre), Some(786432), &|_| None), Some(851968));
+    assert_eq!(version_selectionnee(Some(&json!({"selected": "E:/Autre/Zelda.nsp"})), Some(notre), Some(786432), &|_| None), None, "nom sans version : inconnue");
+    assert_eq!(version_selectionnee(Some(&json!({"selected": 5})), None, None, &|_| None), None);
+    // Le .xci du jeu choisi (la mise à jour qu'il porte, relevé MK8D du 26/11) : lu dans son méta-contenu, jamais dans
+    // son nom (« (v3.01 » n'est pas une version brute).
+    let mk8 = r"D:\Jeux\Switch\Mario Kart 8 Deluxe (v3.01 Incl All DLC) (EU) SuperXCI - MBC.xci";
+    let lu = |p: &std::path::Path| (p == std::path::Path::new(mk8)).then_some(1179648);
+    assert_eq!(version_selectionnee(Some(&json!({"selected": mk8})), None, None, &lu), Some(1179648));
+    assert_eq!(version_selectionnee(Some(&json!({"selected": mk8})), None, None, &|_| None), None, "méta-contenu illisible : inconnue, jamais 3");
+    assert_eq!(version_selectionnee(Some(&json!({"selected": r"D:\Autre\Zelda [v851968].XCI"})), None, None, &|_| None), None, "un .xci ne se lit jamais au nom");
     // Eden : la mise à jour trouvée et allumée, coupée (0), ou inconnue (aucune trouvée).
     let maj = crate::switch_nca::ContenuLu { chemin: notre.into(), sorte: crate::switch_nca::Sorte::MiseAJour, base: BASE, version: Some(786432), forme: crate::switch_nca::Forme::Nsp };
     let mut c = crate::switch_nca::ContenusDuJeu { base: BASE, ..Default::default() };
