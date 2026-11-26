@@ -6972,36 +6972,12 @@ async fn code_connexion_gog(app: &AppHandle, noyau: &Noyau, profil: &str, f: Fen
 /// jamais la session du navigateur du profil, qui est celle d'un autre compte). Le nouveau jeton de renouvellement va au
 /// coffre ; le jeton d'accès ne vit qu'en mémoire. `None` : pas de connexion (la raison au journal, sans aucun jeton).
 async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, profil: &str, secret: &str, compte: &str, connexion: Option<(bool, String)>) -> Option<String> {
-    let ranger = |j: &crate::gog_galaxy::JetonsGog| {
-        if noyau.coffre.ranger(secret, &j.renouvellement).is_err() {
-            noyau.journaliser("import GOG (connexion façon Galaxy) : le coffre de Windows refuse le jeton (connexion refaite à la prochaine lecture)");
-            let _ = noyau.coffre.oublier(secret);
-        }
-    };
-    match noyau.coffre.lire(secret) {
-        Ok(Some(r)) => match crate::gog_galaxy::jetons_renouveles(crate::gog_galaxy::AUTH, &r).await {
-            Ok(j) if crate::gog_galaxy::verifier_compte(&j, compte).is_ok() => {
-                ranger(&j);
-                return Some(j.acces);
-            }
-            Ok(_) => {
-                noyau.journaliser("import GOG (connexion façon Galaxy) : le jeton rangé est celui d'un autre compte : oublié");
-                let _ = noyau.coffre.oublier(secret);
-            }
-            Err(Erreur::Refus(_)) => {
-                noyau.journaliser("import GOG (connexion façon Galaxy) : jeton rangé refusé par GOG : oublié, connexion refaite");
-                let _ = noyau.coffre.oublier(secret);
-            }
-            Err(_) => {
-                noyau.journaliser("import GOG (connexion façon Galaxy) : renouvellement impossible pour l'instant (réseau ou GOG)");
-                return None;
-            }
-        },
-        Ok(None) => {}
-        Err(_) => {
-            noyau.journaliser("import GOG (connexion façon Galaxy) : coffre de Windows illisible : connexion refaite");
-            let _ = noyau.coffre.oublier(secret);
-        }
+    let journal = |m: &str| noyau.journaliser(m);
+    // Le jeton rangé (lot C4c-2 : factorisé dans gog_galaxy::jetons_du_coffre, même comportement).
+    match crate::gog_galaxy::jetons_du_coffre(&*noyau.coffre, &journal, crate::gog_galaxy::AUTH, secret, compte).await {
+        crate::gog_galaxy::JetonRange::Valable(j) => return Some(j.acces),
+        crate::gog_galaxy::JetonRange::Panne => return None,
+        crate::gog_galaxy::JetonRange::ARefaire => {}
     }
     let (montrer, attendu) = connexion?;
     let f = FenetreGog { etiquette: FENETRE_GOG_GALAXY, donnees: crate::gratuits::dossier_navigateur(dossier), montrer, ajout: false, attendu };
@@ -7016,7 +6992,7 @@ async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Pa
     match crate::gog_galaxy::jetons_par_code(crate::gog_galaxy::AUTH, &code).await {
         Ok(j) if crate::gog_galaxy::verifier_compte(&j, compte).is_ok() => {
             noyau.journaliser("import GOG (connexion façon Galaxy) : connecté");
-            ranger(&j);
+            crate::gog_galaxy::ranger_jetons(&*noyau.coffre, &journal, secret, &j);
             Some(j.acces)
         }
         Ok(_) => {

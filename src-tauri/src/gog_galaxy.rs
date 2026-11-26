@@ -128,6 +128,9 @@ pub struct JetonsGog {
     pub acces: String,
     pub renouvellement: String,
     pub user_id: String,
+    /// La durée de validité du jeton d'accès, en secondes (`expires_in` ; 0 : non dite). Lot C4c-2 : un téléchargement
+    /// de plusieurs heures redemande son lien.
+    pub expire_dans: u64,
 }
 
 impl std::fmt::Debug for JetonsGog {
@@ -148,7 +151,7 @@ pub fn lire_jetons(v: &Value) -> Resultat<JetonsGog> {
     if !jeton_sur(&acces) || !jeton_sur(&renouvellement) || !crate::gratuits::numero_gog(&user_id) {
         return Err(Erreur::Serveur("GOG a répondu une connexion illisible.".into()));
     }
-    Ok(JetonsGog { acces, renouvellement, user_id })
+    Ok(JetonsGog { acces, renouvellement, user_id, expire_dans: v["expires_in"].as_u64().unwrap_or(0) })
 }
 
 /// Le compte de la connexion façon Galaxy doit être celui que la page de GOG montre connecté (jamais les jeux d'un
@@ -201,6 +204,60 @@ pub async fn jetons_par_code(base: &str, code: &CodeGog) -> Resultat<JetonsGog> 
 /// Renouvelle les jetons avec le jeton de renouvellement (rangé au coffre).
 pub async fn jetons_renouveles(base: &str, renouvellement: &str) -> Resultat<JetonsGog> {
     demander_jetons(base, &[("client_id", CLIENT_ID), ("client_secret", CLIENT_SECRET), ("grant_type", "refresh_token"), ("refresh_token", renouvellement)]).await
+}
+
+/// Ce que le jeton de renouvellement rangé au coffre a donné (`jetons_du_coffre`).
+pub enum JetonRange {
+    /// Renouvelé pour le bon compte : le NOUVEAU jeton de renouvellement est déjà au coffre.
+    Valable(JetonsGog),
+    /// Pas de jeton valable (absent, refusé par GOG, d'un autre compte, coffre illisible) : la connexion est à refaire.
+    ARefaire,
+    /// Renouvellement impossible pour l'instant (réseau ou GOG) : rien n'est oublié.
+    Panne,
+}
+
+/// Range le nouveau jeton de renouvellement sous `secret` ; refusé par le coffre : il est oublié (connexion refaite à la
+/// prochaine lecture).
+pub fn ranger_jetons(coffre: &dyn crate::coffre::Coffre, journal: &(dyn Fn(&str) + Sync), secret: &str, j: &JetonsGog) {
+    if coffre.ranger(secret, &j.renouvellement).is_err() {
+        journal("import GOG (connexion façon Galaxy) : le coffre de Windows refuse le jeton (connexion refaite à la prochaine lecture)");
+        let _ = coffre.oublier(secret);
+    }
+}
+
+/// Renouvelle les jetons du compte `compte` (numéro Galaxy) avec le jeton rangé au coffre sous `secret`, et range le
+/// nouveau jeton de renouvellement (GOG en donne un nouveau à chaque fois). Un jeton refusé, illisible ou d'un autre
+/// compte est oublié. Factorisé de `commandes::jeton_acces_gog` (lot C4c-2), sans changer son comportement, pour l'essai
+/// réel `essai_gog_installeur`. `journal` ne reçoit jamais de jeton.
+pub async fn jetons_du_coffre(coffre: &dyn crate::coffre::Coffre, journal: &(dyn Fn(&str) + Sync), auth: &str, secret: &str, compte: &str) -> JetonRange {
+    match coffre.lire(secret) {
+        Ok(Some(r)) => match jetons_renouveles(auth, &r).await {
+            Ok(j) if verifier_compte(&j, compte).is_ok() => {
+                ranger_jetons(coffre, journal, secret, &j);
+                JetonRange::Valable(j)
+            }
+            Ok(_) => {
+                journal("import GOG (connexion façon Galaxy) : le jeton rangé est celui d'un autre compte : oublié");
+                let _ = coffre.oublier(secret);
+                JetonRange::ARefaire
+            }
+            Err(Erreur::Refus(_)) => {
+                journal("import GOG (connexion façon Galaxy) : jeton rangé refusé par GOG : oublié, connexion refaite");
+                let _ = coffre.oublier(secret);
+                JetonRange::ARefaire
+            }
+            Err(_) => {
+                journal("import GOG (connexion façon Galaxy) : renouvellement impossible pour l'instant (réseau ou GOG)");
+                JetonRange::Panne
+            }
+        },
+        Ok(None) => JetonRange::ARefaire,
+        Err(_) => {
+            journal("import GOG (connexion façon Galaxy) : coffre de Windows illisible : connexion refaite");
+            let _ = coffre.oublier(secret);
+            JetonRange::ARefaire
+        }
+    }
 }
 
 /// Une page de la bibliothèque de Galaxy (`{items: [{platform_id, external_id, owned…}], next_page_token}`, forme
@@ -726,6 +783,8 @@ mod tests {
         let j = lire_jetons(&json!({"expires_in": 3600, "access_token": "aaa.bbb", "refresh_token": "rrr", "user_id": "48628349957132247", "session_id": "s"})).unwrap();
         assert_eq!((j.acces.as_str(), j.renouvellement.as_str(), j.user_id.as_str()), ("aaa.bbb", "rrr", "48628349957132247"));
         assert_eq!(format!("{j:?}"), "JetonsGog(<caché>)");
+        assert_eq!(j.expire_dans, 3600);
+        assert_eq!(lire_jetons(&json!({"access_token": "a", "refresh_token": "r", "user_id": "1"})).unwrap().expire_dans, 0, "durée non dite");
         assert!(lire_jetons(&json!({"access_token": "a", "refresh_token": "r", "user_id": 12})).is_ok(), "user_id en nombre");
         for mauvais in [json!({}), json!({"access_token": "a", "user_id": "1"}), json!({"access_token": "a b", "refresh_token": "r", "user_id": "1"}), json!({"access_token": "a", "refresh_token": "r", "user_id": "x1"})] {
             assert!(lire_jetons(&mauvais).is_err(), "{mauvais}");
@@ -1046,5 +1105,434 @@ mod tests {
         assert_eq!(relu, cache);
         let ancien: FicheGog = serde_json::from_value(json!({"titre": "X", "genre": "game"})).unwrap();
         assert_eq!(ancien.lu_le, 0);
+    }
+
+    #[tokio::test]
+    async fn le_jeton_du_coffre_est_renouvele_et_le_nouveau_range() {
+        use crate::coffre::{Coffre as _, CoffreMemoire};
+        let s = MockServer::start_async().await;
+        let bon = s
+            .mock_async(|w, t| {
+                w.method(GET).path("/token").query_param("grant_type", "refresh_token").query_param("refresh_token", "VIEUX");
+                t.status(200).json_body(json!({"access_token": "A", "refresh_token": "NEUF", "user_id": "42", "expires_in": 3600}));
+            })
+            .await;
+        let refuse = s
+            .mock_async(|w, t| {
+                w.method(GET).path("/token").query_param("refresh_token", "MORT");
+                t.status(400).json_body(json!({"error": "invalid_grant"}));
+            })
+            .await;
+        let lignes = std::sync::Mutex::new(Vec::<String>::new());
+        let journal = |m: &str| lignes.lock().unwrap().push(m.to_string());
+        let c = CoffreMemoire::default();
+        // Rien au coffre : connexion à refaire, sans aucune demande à GOG.
+        assert!(matches!(jetons_du_coffre(&c, &journal, &s.base_url(), "p#gog", "42").await, JetonRange::ARefaire));
+        // Le bon compte : le NOUVEAU jeton de renouvellement remplace l'ancien au coffre.
+        c.ranger("p#gog", "VIEUX").unwrap();
+        match jetons_du_coffre(&c, &journal, &s.base_url(), "p#gog", "42").await {
+            JetonRange::Valable(j) => assert_eq!((j.acces.as_str(), j.expire_dans), ("A", 3600)),
+            _ => panic!("jeton attendu"),
+        }
+        assert_eq!(c.lire("p#gog").unwrap().as_deref(), Some("NEUF"));
+        // Un autre compte : oublié.
+        c.ranger("p#gog", "VIEUX").unwrap();
+        assert!(matches!(jetons_du_coffre(&c, &journal, &s.base_url(), "p#gog", "7").await, JetonRange::ARefaire));
+        assert_eq!(c.lire("p#gog").unwrap(), None);
+        // Refusé par GOG : oublié.
+        c.ranger("p#gog", "MORT").unwrap();
+        assert!(matches!(jetons_du_coffre(&c, &journal, &s.base_url(), "p#gog", "42").await, JetonRange::ARefaire));
+        assert_eq!(c.lire("p#gog").unwrap(), None);
+        // GOG injoignable : rien n'est oublié.
+        c.ranger("p#gog", "VIEUX").unwrap();
+        assert!(matches!(jetons_du_coffre(&c, &journal, "http://127.0.0.1:1", "p#gog", "42").await, JetonRange::Panne));
+        assert_eq!(c.lire("p#gog").unwrap().as_deref(), Some("VIEUX"));
+        bon.assert_hits_async(2).await;
+        refuse.assert_async().await;
+        let lignes = lignes.lock().unwrap();
+        assert_eq!(lignes.len(), 3, "{lignes:?}");
+        assert!(lignes.iter().all(|l| !l.contains("VIEUX") && !l.contains("NEUF") && !l.contains("MORT")), "jamais un jeton au journal");
+    }
+
+    // ---- Essai réel C4c-2 : outils d'affichage (jamais une adresse signée, un jeton ni un identifiant) ----
+
+    /// La FORME d'un chemin : les suites de 4 chiffres ou plus deviennent `<n>`.
+    fn forme_chemin(chemin: &str) -> String {
+        let mut sortie = String::new();
+        let mut chiffres = String::new();
+        let vider = |sortie: &mut String, chiffres: &mut String| {
+            if chiffres.len() >= 4 {
+                sortie.push_str("<n>");
+            } else {
+                sortie.push_str(chiffres);
+            }
+            chiffres.clear();
+        };
+        for c in chemin.chars() {
+            if c.is_ascii_digit() {
+                chiffres.push(c);
+            } else {
+                vider(&mut sortie, &mut chiffres);
+                sortie.push(c);
+            }
+        }
+        vider(&mut sortie, &mut chiffres);
+        sortie
+    }
+
+    /// Ce qu'on peut dire d'une adresse sans la révéler : l'hôte, la présence d'une requête, et d'un jeton dans le chemin.
+    fn resume_adresse(u: &str) -> String {
+        match reqwest::Url::parse(u) {
+            Ok(u) => format!(
+                "{}://{} — requête signée : {} ; jeton dans le chemin : {}",
+                u.scheme(),
+                u.host_str().unwrap_or("?"),
+                if u.query().is_some_and(|q| !q.is_empty()) { "oui" } else { "non" },
+                if u.path().to_ascii_lowercase().contains("token=") { "oui" } else { "non" }
+            ),
+            Err(_) => "adresse illisible".into(),
+        }
+    }
+
+    /// Une date en clair (UTC) depuis des secondes Unix (algorithme « civil from days » de H. Hinnant).
+    fn date_utc(s: u64) -> String {
+        let (jours, reste) = ((s / 86_400) as i64, s % 86_400);
+        let z = jours + 719_468;
+        let ere = z.div_euclid(146_097);
+        let doe = z - ere * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let jour = doy - (153 * mp + 2) / 5 + 1;
+        let mois = if mp < 10 { mp + 3 } else { mp - 9 };
+        let annee = yoe + ere * 400 + i64::from(mois <= 2);
+        format!("{annee:04}-{mois:02}-{jour:02} {:02}:{:02}:{:02} UTC", reste / 3600, reste % 3600 / 60, reste % 60)
+    }
+
+    /// Les dates de validité lisibles dans une adresse : (nom du paramètre, texte), dans la requête ou dans un jeton du
+    /// chemin (`nom=valeur` séparés par `~`, `&`, `/` ou `,`). Un nombre de 10 chiffres plausible = une date ; un
+    /// paramètre dont le nom dit « expire » avec un petit nombre = une durée. Jamais la valeur d'un autre paramètre.
+    fn validites(u: &str) -> Vec<(String, String)> {
+        let Ok(u) = reqwest::Url::parse(u) else { return vec![] };
+        let mut paires: Vec<(String, String)> = u.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+        for morceau in u.path().split(['/', '~', '&', ',']) {
+            // « token=nva=1764000000 » : le nom est celui juste avant la valeur (« nva »).
+            if let Some((gauche, v)) = morceau.rsplit_once('=') {
+                paires.push((gauche.rsplit('=').next().unwrap_or(gauche).to_string(), v.to_string()));
+            }
+        }
+        paires
+            .into_iter()
+            .filter(|(_, v)| !v.is_empty() && v.len() <= 12 && v.bytes().all(|c| c.is_ascii_digit()))
+            .filter_map(|(k, v)| {
+                let n: u64 = v.parse().ok()?;
+                if (1_500_000_000..=4_000_000_000).contains(&n) {
+                    Some((k, date_utc(n)))
+                } else if k.to_ascii_lowercase().contains("expire") {
+                    Some((k, format!("durée {n} s")))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// L'élément racine d'un XML de contrôle de GOG, ses attributs (nom, valeur) et le nombre d'éléments `<chunk`.
+    fn racine_xml(xml: &str) -> Option<(String, Vec<(String, String)>, usize)> {
+        let attributs = |corps: &str| {
+            let mut v = vec![];
+            let mut reste = corps;
+            while let Some(egal) = reste.find("=\"") {
+                let nom = reste[..egal].trim().rsplit(char::is_whitespace).next().unwrap_or("").to_string();
+                let apres = &reste[egal + 2..];
+                let Some(fin) = apres.find('"') else { break };
+                v.push((nom, apres[..fin].to_string()));
+                reste = &apres[fin + 1..];
+            }
+            v
+        };
+        let mut i = 0;
+        loop {
+            let debut = i + xml[i..].find('<')?;
+            let fin = debut + xml[debut..].find('>')?;
+            let balise = &xml[debut + 1..fin];
+            i = fin + 1;
+            if balise.starts_with('?') || balise.starts_with('!') {
+                continue;
+            }
+            let balise = balise.trim_end_matches('/');
+            let (nom, corps) = balise.split_once(char::is_whitespace).unwrap_or((balise, ""));
+            return Some((nom.to_string(), attributs(corps), xml.matches("<chunk").count()));
+        }
+    }
+
+    #[test]
+    fn l_essai_gog_ne_montre_que_des_formes() {
+        assert_eq!(forme_chemin("/products/1207658924/downlink/installer/en1installer0"), "/products/<n>/downlink/installer/en1installer0");
+        let signee = "https://gog-cdn-fastly.gog.com/token=nva=1764000000~dirs=4~token=0abcdef/secure/offline/1234567/setup.exe?expires=1764003600&sig=SECRET";
+        let r = resume_adresse(signee);
+        assert_eq!(r, "https://gog-cdn-fastly.gog.com — requête signée : oui ; jeton dans le chemin : oui");
+        let v = validites(signee);
+        assert_eq!(v, vec![("expires".to_string(), "2025-11-24 17:00:00 UTC".to_string()), ("nva".to_string(), "2025-11-24 16:00:00 UTC".to_string())]);
+        assert!(v.iter().all(|(k, t)| !k.contains("SECRET") && !t.contains("SECRET") && !t.contains("0abcdef")));
+        assert_eq!(validites("https://x.example/f?X-Amz-Expires=3600&id=12"), vec![("X-Amz-Expires".to_string(), "durée 3600 s".to_string())]);
+        assert_eq!(date_utc(0), "1970-01-01 00:00:00 UTC");
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<file name=\"setup_x.exe\" available=\"1\" md5=\"0123456789abcdef\" chunks=\"2\" total_size=\"20\">\n<chunk id=\"0\" from=\"0\" to=\"9\" method=\"md5\">aa</chunk>\n<chunk id=\"1\" from=\"10\" to=\"19\" method=\"md5\">bb</chunk>\n</file>";
+        let (nom, attrs, n) = racine_xml(xml).unwrap();
+        assert_eq!((nom.as_str(), n), ("file", 2));
+        assert_eq!(attrs.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["name", "available", "md5", "chunks", "total_size"]);
+        assert_eq!(attrs[2].1, "0123456789abcdef");
+    }
+
+    /// Une requête toutes les 2 s au plus.
+    struct Rythme(Option<std::time::Instant>);
+
+    impl Rythme {
+        async fn attendre(&mut self) {
+            if let Some(t) = self.0 {
+                let ecart = std::time::Duration::from_secs(2);
+                let passe = t.elapsed();
+                if passe < ecart {
+                    tokio::time::sleep(ecart - passe).await;
+                }
+            }
+            self.0 = Some(std::time::Instant::now());
+        }
+    }
+
+    /// GET sans jeton, https SEULEMENT, redirections suivies à la main (5 au plus) en n'affichant que les HÔTES. `range` :
+    /// l'en-tête `Range: bytes=0-0`. Le corps n'est jamais lu ici.
+    async fn suivre_sans_jeton(c: &reqwest::Client, depart: &str, range: bool, rythme: &mut Rythme) -> Option<reqwest::Response> {
+        let mut u = reqwest::Url::parse(depart).ok()?;
+        for saut in 0..=5 {
+            if u.scheme() != "https" {
+                println!("   ✗ saut {saut} : adresse non https ({}) : arrêt", u.scheme());
+                return None;
+            }
+            println!("   → saut {saut} : hôte {}", u.host_str().unwrap_or("?"));
+            rythme.attendre().await;
+            let mut q = c.get(u.clone());
+            if range {
+                q = q.header(reqwest::header::RANGE, "bytes=0-0");
+            }
+            let r = match q.send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("   ✗ pas de réponse (délai : {}, connexion : {})", e.is_timeout(), e.is_connect());
+                    return None;
+                }
+            };
+            if r.status().is_redirection() {
+                let Some(l) = r.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()) else {
+                    println!("   ✗ redirection {} sans Location", r.status().as_u16());
+                    return None;
+                };
+                println!("   ↪ redirection {}", r.status().as_u16());
+                u = u.join(l).ok()?;
+                continue;
+            }
+            return Some(r);
+        }
+        println!("   ✗ plus de 5 redirections : arrêt");
+        None
+    }
+
+    /// RÉEL, LECTURE SEULE chez GOG — avant le lot C4c-2 (installeur hors ligne officiel, accord de Seb à demander) :
+    /// relève les FORMES de `products/<id>?expand=downloads`, du `downlink` d'un fichier d'installeur, de son XML de
+    /// contrôle et des en-têtes du CDN (UNE requête `Range: bytes=0-0`, aucun corps lu au-delà), sans rien télécharger
+    /// du jeu. Rien n'est écrit sur le disque, sauf le NOUVEAU jeton de renouvellement au coffre, exactement comme
+    /// Frogtend (`jetons_du_coffre`), sinon le compte serait déconnecté. Jamais un jeton, une adresse signée ni un cookie
+    /// à l'écran. Une requête toutes les 2 s au plus. Frogtend doit être FERMÉ (deux renouvellements croisés
+    /// déconnecteraient le compte) : l'essai refuse de partir sinon.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_GOG_JEU=<id GOG> [FROGTEND_GOG_COMPTE=<id Galaxy>] cargo test --lib gog_galaxy::tests::essai_gog_installeur -- --ignored --exact --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_gog_installeur() {
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeu = std::env::var("FROGTEND_GOG_JEU").expect("FROGTEND_GOG_JEU");
+        assert!(crate::gratuits::numero_gog(&jeu), "FROGTEND_GOG_JEU doit être un numéro de jeu GOG");
+        let compte_voulu = std::env::var("FROGTEND_GOG_COMPTE").ok().filter(|s| !s.is_empty());
+        // Frogtend fermé (son verrou COMPTES_GOG ne protège que son propre processus).
+        let mut sys = sysinfo::System::new();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        assert!(
+            !sys.processes().values().any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("frogtend.exe")),
+            "Frogtend est ouvert : ferme-le avant l'essai (deux renouvellements du jeton GOG à la fois déconnecteraient le compte)"
+        );
+        // Le compte qui possède le jeu, lu (lecture seule) dans boutiques.json du profil.
+        let donnees = std::path::PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("fr.hikari-no-sekai.frogtend").join("profils").join(&profil);
+        let comptes = crate::boutiques::lire_source(&donnees, "gog").map(|c| crate::boutiques::comptes_gog_lus(&c)).unwrap_or_default();
+        let cle_jeu = format!("gog_{jeu}");
+        let compte = match &compte_voulu {
+            Some(id) => comptes.iter().find(|x| &x.id_galaxy == id).expect("FROGTEND_GOG_COMPTE : aucun compte GOG de ce profil n'a ce numéro Galaxy"),
+            None => {
+                let possede: Vec<_> = comptes.iter().filter(|x| x.ids_lus.contains(&jeu) || x.jeux.iter().any(|j| j.id == cle_jeu)).collect();
+                match (possede.as_slice(), comptes.as_slice()) {
+                    ([un], _) => *un,
+                    (_, [seul]) => seul,
+                    _ => {
+                        for x in &comptes {
+                            println!("compte GOG n° {} « {} » : numéro Galaxy {}", x.numero, x.nom, x.id_galaxy);
+                        }
+                        panic!("plusieurs comptes GOG possibles : précise FROGTEND_GOG_COMPTE");
+                    }
+                }
+            }
+        };
+        assert!(!compte.id_galaxy.is_empty(), "ce compte n'a pas encore de numéro Galaxy : relis tes comptes GOG dans Frogtend d'abord");
+        println!("== compte : n° {} ({:?}), possède le jeu d'après Frogtend : {}", compte.numero, compte.navigateur, compte.ids_lus.contains(&jeu) || compte.jeux.iter().any(|j| j.id == cle_jeu));
+        let secret = crate::boutiques::secret_compte_gog(&profil, compte.navigateur, &compte.id_galaxy);
+        let mut rythme = Rythme(None);
+
+        // 1. Le jeton d'accès, par le chemin de Frogtend (le nouveau jeton de renouvellement retourne au coffre).
+        let journal = |m: &str| println!("   (journal de Frogtend : {m})");
+        rythme.attendre().await;
+        let jetons = match jetons_du_coffre(&crate::coffre::CoffreWindows, &journal, AUTH, &secret, &compte.id_galaxy).await {
+            JetonRange::Valable(j) => j,
+            JetonRange::ARefaire => panic!("pas de jeton GOG valable pour ce compte : reconnecte-le dans Frogtend (🛒 Boutiques), puis relance l'essai"),
+            JetonRange::Panne => panic!("GOG ne répond pas pour l'instant : réessaie plus tard (rien n'a été oublié)"),
+        };
+        println!("== 1. jeton : renouvelé, nouveau jeton de renouvellement rangé au coffre ; expires_in = {}", jetons.expire_dans);
+        let acces = jetons.acces.clone();
+        drop(jetons);
+
+        // 2. La fiche avec ses téléchargements : sans jeton, puis avec si nécessaire.
+        let api = client().unwrap();
+        let route = format!("{PRODUITS}/products/{jeu}?expand=downloads");
+        let mut fiche = Value::Null;
+        for avec in [false, true] {
+            rythme.attendre().await;
+            let mut q = api.get(&route);
+            if avec {
+                q = q.bearer_auth(&acces);
+            }
+            let r = q.send().await.map_err(|e| e.without_url()).expect("api.gog.com ne répond pas");
+            let st = r.status().as_u16();
+            let v: Value = r.json().await.unwrap_or_default();
+            let installeurs = v["downloads"]["installers"].as_array().map_or(0, Vec::len);
+            println!("== 2. products ({}) : statut {st}, {installeurs} installeur(s)", if avec { "avec jeton" } else { "sans jeton" });
+            fiche = v;
+            if st == 200 && installeurs > 0 {
+                break;
+            }
+        }
+        let cles = |v: &Value| v.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default();
+        println!("   clés : {:?}", cles(&fiche));
+        println!("   downloads ▸ clés : {:?}", cles(&fiche["downloads"]));
+        for k in ["patches", "language_packs", "bonus_content"] {
+            if let Some(a) = fiche["downloads"][k].as_array() {
+                println!("   downloads ▸ {k} : {} élément(s){}", a.len(), a.first().map(|x| format!(", clés du premier {:?}", cles(x))).unwrap_or_default());
+            }
+        }
+        let installeurs = fiche["downloads"]["installers"].as_array().cloned().unwrap_or_default();
+        if let Some(i) = installeurs.first() {
+            println!("   installeur ▸ clés : {:?}", cles(i));
+        }
+        for i in installeurs.iter().filter(|i| i["os"] == "windows") {
+            println!(
+                "   ▸ installeur id {} · langue {} ({}) · version {} · total_size {}",
+                i["id"], i["language"], i["language_full"], i["version"], i["total_size"]
+            );
+            for f in i["files"].as_array().into_iter().flatten() {
+                let chemin = f["downlink"].as_str().and_then(|d| reqwest::Url::parse(d).ok()).map(|u| format!("{}{}", u.host_str().unwrap_or("?"), forme_chemin(u.path()))).unwrap_or_else(|| "?".into());
+                println!("       fichier id {} · size {} · downlink {chemin}", f["id"], f["size"]);
+            }
+        }
+        match &fiche["dlcs"] {
+            Value::Null => println!("   dlcs : absent"),
+            Value::Array(a) => println!("   dlcs : tableau de {} élément(s)", a.len()),
+            d => println!("   dlcs : clés {:?} ; products : {}", cles(d), d["products"].as_array().map_or(0, Vec::len)),
+        }
+        if let Some(d) = fiche["expanded_dlcs"].as_array() {
+            println!("   expanded_dlcs : {} élément(s)", d.len());
+        }
+
+        // 3. Le downlink du premier fichier de l'installeur Windows français (sinon anglais), sur api.gog.com seulement.
+        let windows = |langue: &str| installeurs.iter().find(|i| i["os"] == "windows" && i["language"] == langue).cloned();
+        let Some(choisi) = windows("fr").or_else(|| windows("en")) else {
+            println!("== 3. aucun installeur Windows français ni anglais : arrêt");
+            return;
+        };
+        println!("== 3. installeur choisi : {} ({})", choisi["id"], choisi["language"]);
+        let Some(lien) = choisi["files"][0]["downlink"].as_str().and_then(|d| reqwest::Url::parse(d).ok()) else {
+            println!("   pas de downlink : arrêt");
+            return;
+        };
+        assert!(lien.scheme() == "https" && lien.host_str() == Some("api.gog.com"), "le jeton ne part que vers https://api.gog.com");
+        rythme.attendre().await;
+        let r = api.get(lien).bearer_auth(&acces).send().await.map_err(|e| e.without_url()).expect("downlink sans réponse");
+        drop(acces);
+        let st = r.status().as_u16();
+        if r.status().is_redirection() {
+            let hote = r.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()).map(resume_adresse).unwrap_or_default();
+            println!("   statut {st} : redirection NON suivie vers {hote}");
+            return;
+        }
+        let v: Value = r.json().await.unwrap_or_default();
+        println!("   statut {st} ; clés {:?}", cles(&v));
+        for k in ["downlink", "checksum"] {
+            match v[k].as_str() {
+                Some(u) => println!("   {k} : {}", resume_adresse(u)),
+                None => println!("   {k} : absent ou vide ({})", if v[k].is_null() { "null" } else { "autre forme" }),
+            }
+        }
+        let cdn = reqwest::Client::builder().user_agent("Frogtend").timeout(std::time::Duration::from_secs(30)).redirect(reqwest::redirect::Policy::none()).https_only(true).build().unwrap();
+
+        // 4. Le XML de contrôle (sans jeton, https seulement).
+        if let Some(u) = v["checksum"].as_str().filter(|u| !u.is_empty()) {
+            println!("== 4. XML de contrôle");
+            if let Some(r) = suivre_sans_jeton(&cdn, u, false, &mut rythme).await {
+                let st = r.status().as_u16();
+                let texte = r.text().await.unwrap_or_default();
+                println!("   statut {st}, {} octets", texte.len());
+                match racine_xml(&texte) {
+                    Some((nom, attrs, n)) => {
+                        println!("   racine <{nom}> ; attributs : {:?}", attrs.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>());
+                        for (k, val) in &attrs {
+                            match k.as_str() {
+                                "name" | "total_size" | "chunks" => println!("     {k} = {val}"),
+                                "md5" => println!("     md5 = {}…", val.chars().take(8).collect::<String>()),
+                                _ => {}
+                            }
+                        }
+                        println!("   éléments <chunk : {n}");
+                        if let Some(p) = texte.find("<chunk") {
+                            let fin = texte[p..].find('>').map_or(texte.len(), |f| p + f + 1);
+                            if let Some((_, a, _)) = racine_xml(&texte[p..fin]) {
+                                println!("   premier chunk : {:?}", a.iter().map(|(k, val)| if k == "id" || k == "from" || k == "to" || k == "method" { format!("{k}={val}") } else { k.clone() }).collect::<Vec<_>>());
+                            }
+                        }
+                    }
+                    None => println!("   pas un XML lisible"),
+                }
+            }
+        } else {
+            println!("== 4. pas de checksum");
+        }
+
+        // 5. UNE requête Range: bytes=0-0 sur le CDN (sans jeton) ; aucun corps lu.
+        let Some(u) = v["downlink"].as_str().filter(|u| !u.is_empty()) else {
+            println!("== 5. pas de lien du CDN");
+            return;
+        };
+        println!("== 5. CDN (Range: bytes=0-0)");
+        for (nom, texte) in validites(u) {
+            println!("   validité lue dans l'adresse : {nom} → {texte}");
+        }
+        if let Some(r) = suivre_sans_jeton(&cdn, u, true, &mut rythme).await {
+            println!("   statut {}", r.status().as_u16());
+            let h = r.headers();
+            let en_tete = |n: &str| h.get(n).and_then(|v| v.to_str().ok()).map(str::to_string);
+            for n in ["accept-ranges", "content-range", "content-length", "content-type", "etag", "last-modified"] {
+                println!("   {n} : {}", en_tete(n).unwrap_or_else(|| "—".into()));
+            }
+            let disposition = en_tete("content-disposition").map(|d| {
+                d.split(';').map(str::trim).find_map(|p| p.strip_prefix("filename=").map(|n| n.trim_matches('"').to_string())).unwrap_or_else(|| "(sans nom)".into())
+            });
+            println!("   content-disposition (nom) : {}", disposition.unwrap_or_else(|| "—".into()));
+            // Le corps n'est pas lu : la réponse est fermée ici.
+            drop(r);
+        }
+        println!("== fin du relevé (rien d'écrit sur le disque ; le coffre seulement, comme Frogtend)");
     }
 }
