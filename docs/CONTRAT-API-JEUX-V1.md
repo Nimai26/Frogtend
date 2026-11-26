@@ -505,6 +505,32 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.58 (26/11, Firehouse 3.366.0, EN SERVICE, `X-Api-Jeux-Version: 1.58`) — 🔗 TRANSMEDIA : œuvres liées et univers d'un jeu
+Reçu par message de la session Firehouse (26/11). Ajout compatible, lecture seule, PAS urgent : après les chantiers en
+cours (MK8, C4c-2, serveurs 1.56). La 1.57 (bonus GOG) reste un PROJET non servi (en attente de l'extrait réel
+`bonus_content` de Frogtend).
+
+`GET /jeu/{id}` → `jeu` gagne deux champs TOUJOURS présents (listes vides sinon), FILTRÉS pour ce jeton (une œuvre
+invisible pour la personne n'est ni rendue ni comptée ; preuve et origine jamais servies) :
+- `liens` [{relation, libelle, oeuvre, versions?, ouvrir}] ; `relation` vue DEPUIS ce jeu (adapte_de | adapte_en |
+  bande_originale_de | a_pour_bo | suite_de | a_pour_suite | derive_de | a_pour_derive | version_audio_de |
+  a_pour_version_audio | clip_de | a_pour_clip | meme_univers | episode_special_de | a_pour_episode_special) ;
+  `libelle` en français, à afficher tel quel ; `oeuvre` {id, titre, annee, type (film | serie | jeu | musique | livre |
+  livre_audio | documentaire), statut} ; `versions?` (≥ 2) : le même jeu sur plusieurs consoles, en UNE ligne.
+- `univers` [{id, nom, resume (« 6 films · 4 jeux · 1 série »), oeuvres [{id, titre, annee, type, statut, versions?,
+  ouvrir}]}] : les AUTRES œuvres de l'univers (au moins 2 types, validé une fois par un admin). `nom` à afficher tel
+  qu'il est servi, JAMAIS gardé en cache (les noms vont passer en français).
+- `ouvrir` : `{ou: "frogtend", media_id}` pour un JEU (la fiche de Frogtend) ; `{ou: "firehouse", chemin:
+  "/?panel=mediatheque&fiche=<id>"}` pour le reste, à ouvrir dans le navigateur avec l'adresse Firehouse réglée +
+  `chemin` (Médiathèque, droits habituels).
+- Sources : admin, ou identifiants (Wikidata, TMDB…), jamais le seul titre ; ≈ 900 liens au 26/11, surtout des suites
+  entre jeux. Rien à écrire côté Frogtend.
+- Exemple réel (`GET /jeu/25081`, Alien 3 C64) : liens [{adapte_de, « adapté de », oeuvre {15500, « Alien³ », 1992,
+  film, possede}, ouvrir {firehouse, /?panel=mediatheque&fiche=15500}}], univers [] (l'univers « Alien » attend la
+  validation de Seb).
+- Écran suggéré : sous la fiche, « 🔗 Œuvres liées » (une ligne par lien) et « 🌌 Univers Alien · 6 films · 4 jeux ·
+  1 série », repliable.
+
 ### 1.56 (26/11, Firehouse 3.354.0, EN SERVICE, `X-Api-Jeux-Version: 1.56`) — 🕹 les SERVEURS DE JEUX de la maison
 Reçu par message de la session Firehouse (26/11), texte du BRIEF § 1.56 + exemple réel (jeton d'un MINEUR). Partage :
 Firehouse sert le contrat ; Frogtend l'écran « Serveurs Firehouse » et l'exécution des recettes ; la session Minecraft
