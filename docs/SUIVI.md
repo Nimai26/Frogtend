@@ -1648,6 +1648,8 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.229.1** (26/11) — MK8 Deluxe pris pour un jeu PC (« nature non dite », Seb 26/11). `installation_annuler` (note seule : méthode aucune, sans lanceur ni fichier du jeu ; parties apparues depuis la note copiées à l'abri d'abord, sinon refus ; relevé mis de côté, aucun fichier du jeu touché), branché sur « Annuler » du choix du lanceur (bureau et Taodbox) ; `installation_refaisable` + « 📦 Refaire l'installation (rien n'est retéléchargé) » dans Gérer ; `installation::nature_par_les_fichiers` (NonDite + extensions de SA plateforme → émulateur ; .exe, archive, plusieurs fichiers sans .m3u/.cue/.gdi → voie PC). Revue frogtend-lancement-expert : B1 (parties reposées), I1 (ordre), I2 (plusieurs fichiers), m1, m2, m3 corrigés ; I3 (version_simple, prete_a_l_arrivee et l'interface jugent encore sur la seule qualité) non fait. Vérifié : tests (cargo 1393, vitest 782, check 0). PAS vérifié : le parcours réel chez Seb.
+
 - **0.108.0** (26/10) — Contrat 1.30 (besoin 34 servi) : mesure réelle depuis Venkman — synchro complète 16,4 s
   (avant 614 s), sans changement 1,1 s (avant 21 s), une page 0,1 à 0,3 s ; envoyée à Firehouse. reqwest `gzip` :
   les réponses JSON arrivent compressées ; `no_gzip()` sur TOUS les clients qui téléchargent des fichiers (flux

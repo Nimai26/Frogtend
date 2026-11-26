@@ -551,6 +551,44 @@ dossier, qui efface TOUT le dossier, captures comprises) ; TOUJOURS passer `/DIR
 déjà enregistré ; sur Venkman, l'essai de Seb est dans `D:\Firehouse_IA_Venkman\Minecraft\_essais\hikari-setup\`, à
 garder ou désinstaller AVEC Seb) ; un `/DIR` explicite face à un dossier déjà enregistré reste à confirmer à l'essai.
 
+**Installation Hikari EXISTANTE** (réponses de la session Minecraft du 26/11, servies dans `infos.existant` de la
+recette ; Firehouse 3.356.0 en tests) :
+- **Détection** :
+  - AppId Inno `{6F1B6C5E-8A2D-4C3F-9B7E-48A1C9D0E2F1}` ;
+  - clé `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F1B6C5E-8A2D-4C3F-9B7E-48A1C9D0E2F1}_is1`,
+    valeur `InstallLocation` (elle finit par « \ ») ;
+  - HKCU seulement : une seule installation enregistrée par compte Windows ;
+  - vérifier ensuite que `<InstallLocation>\prismlauncher.exe` existe.
+- **Pas déplaçable à la main** :
+  - `instances\Hikari\instance.cfg` reçoit un JavaPath ABSOLU après le 1er lancement ;
+  - `unins000.dat` et la clé gardent l'ancien chemin.
+- **Raccourcis** (posés et retirés par l'installeur) : `%USERPROFILE%\Desktop\Hikari no Sekai.lnk` et
+  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Hikari no Sekai.lnk`. Cible `prismlauncher.exe`, arguments
+  `--launch Hikari --server mc1.hikari-no-sekai.fr`, dossier de travail et icône `hikari.ico` dans le dossier.
+- **Méthode** `deplacement.methode = sauvegarder_desinstaller_reinstaller_restaurer` :
+  1. lire InstallLocation, vérifier prismlauncher.exe et que le jeu n'est PAS lancé (ni javaw ni prismlauncher de ce
+     dossier) ;
+  2. COPIER `a_garder` dans une sauvegarde, puis la vérifier (taille, nombre de fichiers) ;
+  3. `<ancien>\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` (efface tout l'ancien dossier) ;
+  4. lancer l'installeur avec `/DIR="<nouveau>" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` ;
+  5. restaurer `a_garder` SAUF `ne_pas_restaurer` ;
+  6. ne réécrire aucun chemin ;
+  7. garder la sauvegarde jusqu'au 1er lancement réussi (connexion Microsoft, monde et cartes).
+- **`a_garder`** : `accounts.json`, `java\`, `instances\Hikari\.minecraft\` EN ENTIER.
+- **`ne_pas_restaurer`** : `.minecraft\hikari-lanceur.jar`, `.minecraft\packwiz-installer-bootstrap.jar`,
+  `instances\Hikari\instance.cfg`, `prismlauncher.cfg`. Pour garder le temps de jeu, ne recopier que
+  `totalTimePlayed` et `lastTimePlayed`.
+- Taille typique ≈ 1,2 Go. La réinstallation recrée les raccourcis aux mêmes noms : la personne ne voit aucune
+  différence.
+- **Repli `si_risque`** : laisser en place et lancer depuis InstallLocation.
+- **NON VÉRIFIÉ (`a_confirmer`)** :
+  - Prism reprend-il le Java restauré sans JavaPath ? Sinon, environ 200 Mo sont retéléchargés.
+  - Que fait `/DIR` face à une installation enregistrée, sans désinstallation ?
+
+  Essai D'ABORD sur l'installation d'essai de Venkman, avec Seb. ⚠ Firehouse écrit « jamais sur le PC d'une autre
+  personne sans son accord ET celui de Seb ». La règle de Frogtend (accord de l'utilisateur) est que l'accord se
+  demande à la PERSONNE qui utilise ce PC : à confirmer avec Seb au début du lot.
+
 **Palworld** : [installer_jeu (Steam 1623730), lancer (dans le jeu : « Rejoindre une partie multijoueur », saisir
 l'adresse)].
 

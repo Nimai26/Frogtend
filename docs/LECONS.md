@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 26/11 — Une installation notée AVANT la dernière question de la personne
+Ce qui s'est passé : « 📦 Installer » de Mario Kart 8 Deluxe (servi « nature non dite ») l'a noté installé comme un
+jeu PC, PUIS a demandé « Qu'est-ce qui lance… ? » ; Seb a annulé, mais la note restait : « ▶ Jouer » sans rien pour le
+lancer, et la seule sortie, « Retirer du PC », aurait effacé 12 Go. · Comment l'appliquer : toute étape qui se finit
+sur une question doit savoir se DÉFAIRE si la personne annule (ici `installation_annuler`, qui ne touche aucun
+fichier) ; et un état faux laissé par une version passée doit avoir une sortie qui n'efface rien (« Refaire
+l'installation »). Une nature « non dite » se juge aussi aux fichiers et à la plateforme.
+
 ## 11/11 — Une dépendance réservée aux tests passe les tests ciblés, pas la livraison
 Ce qui s'est passé : xemu.rs (0.179.0) lisait le TOML avec `toml`, qui n'est qu'une dépendance de TEST : `cargo test
 --lib xemu` passait, la livraison a échoué à la compilation du programme. Vu avant de publier. · Comment

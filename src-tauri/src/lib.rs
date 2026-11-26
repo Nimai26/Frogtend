@@ -554,6 +554,8 @@ pub fn run() {
             commandes::installation_preparer,
             commandes::installation_lancer,
             commandes::installation_ailleurs,
+            commandes::installation_annuler,
+            commandes::installation_refaisable,
             commandes::lancement_candidats,
             commandes::lanceur_choisir,
             commandes::jeu_jouer,

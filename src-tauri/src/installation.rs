@@ -44,6 +44,75 @@ pub fn nature(qualite: &str) -> Nature {
     }
 }
 
+/// Les extensions de ROM et d'images disque que les émulateurs d'une plateforme (nom LaunchBox) lisent telles quelles.
+/// Volontairement courte et sûre : une plateforme absente (Windows, MS-DOS, PS3, PS Vita…) n'est jamais devinée.
+const EXTENSIONS_EMULEES: &[(&str, &[&str])] = &[
+    ("Nintendo Switch", &["xci", "nsp", "nsz", "xcz"]),
+    ("Sony Playstation 2", &["iso", "chd", "cso", "zso", "bin", "cue", "m3u"]),
+    ("Sony Playstation", &["bin", "cue", "chd", "iso", "img", "ccd", "sub", "sbi", "pbp", "m3u"]),
+    ("Sony PSP", &["iso", "cso", "pbp", "chd"]),
+    ("Nintendo GameCube", &["iso", "gcm", "rvz", "gcz", "ciso"]),
+    ("Nintendo Wii", &["iso", "wbfs", "rvz", "gcz", "wia"]),
+    ("Nintendo Wii U", &["wux", "wud", "wua"]),
+    ("Nintendo 3DS", &["3ds", "cia", "cci", "cxi"]),
+    ("Nintendo DS", &["nds"]),
+    ("Nintendo Game Boy", &["gb"]),
+    ("Nintendo Game Boy Color", &["gbc", "gb"]),
+    ("Nintendo Game Boy Advance", &["gba"]),
+    ("Nintendo Entertainment System", &["nes"]),
+    ("Super Nintendo Entertainment System", &["sfc", "smc"]),
+    ("Nintendo 64", &["n64", "z64", "v64"]),
+    ("Sega Genesis", &["md", "gen", "smd", "bin"]),
+    ("Sega Mega Drive", &["md", "gen", "smd", "bin"]),
+    ("Sega Master System", &["sms"]),
+    ("Sega Game Gear", &["gg"]),
+    ("Sega 32X", &["32x"]),
+    ("Sega CD", &["cue", "bin", "chd", "iso"]),
+    ("Sega Saturn", &["cue", "bin", "chd", "iso", "m3u"]),
+    ("Sega Dreamcast", &["gdi", "cdi", "chd", "m3u"]),
+    ("Atari 2600", &["a26"]),
+    ("Atari 7800", &["a78"]),
+    ("Atari Lynx", &["lnx"]),
+    ("Atari Jaguar", &["j64", "jag"]),
+    ("NEC TurboGrafx-16", &["pce"]),
+    ("Microsoft Xbox", &["iso"]),
+    ("Microsoft Xbox 360", &["iso"]),
+];
+
+/// Une version de nature NON DITE dont TOUS les fichiers sont des ROM ou des images disque connues pour sa plateforme
+/// (MK8 Deluxe le 26/11 : un .xci servi « Jeu (nature non dite) » installé comme un jeu PC) : elle se joue par
+/// l'émulateur, comme une ROM (`Rom`) ou une image disque (`ImageDisque`, d'après `empreintes::nature`). Un .exe, une
+/// archive (.zip, .7z…) ou une plateforme inconnue : `None`, la voie PC reste.
+pub fn nature_par_les_fichiers(plateforme: &str, noms: &[String]) -> Option<Nature> {
+    let connues = EXTENSIONS_EMULEES.iter().find(|(p, _)| p.eq_ignore_ascii_case(plateforme)).map(|(_, e)| *e)?;
+    if noms.is_empty() {
+        return None;
+    }
+    // Plusieurs fichiers : seulement avec celui qui les décrit (.m3u, .cue, .gdi), qui sera lancé. Sans lui (un jeu
+    // Switch et sa mise à jour en .nsp, deux .iso…), on ne devinerait pas lequel lancer : la règle ne s'applique pas.
+    let decrit = |n: &String| {
+        let n = n.to_ascii_lowercase();
+        n.ends_with(".m3u") || n.ends_with(".cue") || n.ends_with(".gdi")
+    };
+    if noms.len() > 1 && !noms.iter().any(decrit) {
+        return None;
+    }
+    let mut disque = false;
+    for nom in noms {
+        let ext = nom.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+        if !connues.contains(&ext.as_str()) {
+            return None;
+        }
+        match crate::empreintes::nature(plateforme, nom) {
+            crate::empreintes::Nature::Disque => disque = true,
+            crate::empreintes::Nature::EnClair => {}
+            // Une archive ou un zip MAME : jamais donné tel quel par cette règle.
+            _ => return None,
+        }
+    }
+    Some(if disque { Nature::ImageDisque } else { Nature::Rom })
+}
+
 /// Ce qu'est un fichier, d'après son contenu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -647,6 +716,33 @@ mod tests {
         assert_eq!(nature("Repack"), Nature::Repack);
         assert_eq!(nature("Installeur d'origine"), Nature::InstalleurOrigine);
         assert_eq!(nature(""), Nature::NonDite);
+        assert_eq!(nature("Jeu (nature non dite)"), Nature::NonDite, "la qualité servie pour MK8 Deluxe le 26/11");
+    }
+
+    #[test]
+    fn une_nature_non_dite_se_reconnait_aux_fichiers_de_sa_plateforme() {
+        let n = |p: &str, l: &[&str]| nature_par_les_fichiers(p, &l.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        let mk8 = "Mario Kart 8 Deluxe (v3.01 Incl All DLC) (EU) SuperXCI - MBC.xci";
+        assert_eq!(n("Nintendo Switch", &[mk8]), Some(Nature::ImageDisque), "un .xci : l'émulateur");
+        for f in ["j.nsp", "j.NSZ", "j.xcz"] {
+            assert!(n("Nintendo Switch", &[f]).is_some(), "{f}");
+        }
+        assert_eq!(n("Sony Playstation 2", &["Jeu.iso"]), Some(Nature::ImageDisque));
+        assert_eq!(n("Sony Playstation 2", &["Jeu.chd"]), Some(Nature::ImageDisque));
+        assert_eq!(n("Sony Playstation", &["Jeu.cue", "Jeu.bin"]), Some(Nature::ImageDisque));
+        assert_eq!(n("Sony Playstation", &["Jeu.cue", "Jeu.bin", "Jeu.sbi"]), Some(Nature::ImageDisque), "avec son .sbi (libcrypt)");
+        // Plusieurs fichiers sans celui qui les décrit : on ne devinerait pas lequel lancer.
+        assert_eq!(n("Nintendo Switch", &["Jeu.nsp", "Jeu [maj].nsp"]), None);
+        assert_eq!(n("Sony Playstation 2", &["Disque 1.iso", "Disque 2.iso"]), None);
+        assert_eq!(n("Nintendo Game Boy Advance", &["Jeu.gba"]), Some(Nature::Rom));
+        // La voie PC reste : un .exe, une archive, un fichier mêlé, une plateforme sans règle, rien.
+        assert_eq!(n("Nintendo Switch", &["setup.exe"]), None);
+        assert_eq!(n("Nintendo Switch", &["Jeu.zip"]), None);
+        assert_eq!(n("Nintendo Switch", &[mk8, "crack.exe"]), None, "un seul fichier inconnu suffit");
+        assert_eq!(n("Windows", &["Jeu.iso"]), None, "un .iso d'un jeu PC : jamais deviné");
+        assert_eq!(n("MS-DOS", &["DUNE.EXE"]), None);
+        assert_eq!(n("Nintendo Switch", &[]), None);
+        assert_eq!(n("Nintendo Game Boy Advance", &["Jeu.iso"]), None, "une extension d'une autre console");
     }
 
     #[test]

@@ -543,6 +543,12 @@ impl Noyau {
     }
 }
 
+/// Une installation qui n'est qu'une NOTE : méthode `aucune` (rien copié, installé ni décompressé), sans lanceur choisi,
+/// sans fichier donné à un émulateur, sans versions, boutique ni fichiers décompressés. La défaire ne touche aucun fichier.
+pub(crate) fn note_seule(i: &Installation) -> bool {
+    i.methode == Methode::Aucune && i.lanceur.is_none() && i.fichier_du_jeu.is_none() && i.versions.is_empty() && i.boutique.is_none() && i.extraits.is_empty()
+}
+
 /// La ligne porte-t-elle plusieurs RÉGIONS d'un jeu (pas les cartes e-Reader, qui ont leur propre lancement) ?
 pub(crate) fn plusieurs_versions(j: &JeuPc) -> bool {
     !crate::jeux_pc::a_cartes(&j.plateforme) && j.fichiers.iter().any(|f| f.version.is_some_and(|v| v != j.version))
@@ -832,6 +838,13 @@ impl Noyau {
             n = Nature::ImageDisque;
         }
         let noms: Vec<String> = j.fichiers.iter().map(|f| f.nom.clone()).collect();
+        // Une nature non dite dont tous les fichiers sont des ROM ou des images disque de SA plateforme (MK8 Deluxe,
+        // 26/11 : un .xci servi « Jeu (nature non dite) ») : l'émulateur, jamais la voie PC. Un .exe ou une archive y reste.
+        if n == Nature::NonDite && forme_fichier(&version) {
+            if let Some(par_fichiers) = crate::installation::nature_par_les_fichiers(&j.plateforme, &noms) {
+                n = par_fichiers;
+            }
+        }
         // Un jeu PC en archive (contrat 1.23/1.24, forme `archive`) : la FORME fait foi, jamais la qualité (« Jeu — ROM »
         // sur le relevé réel du 21/10) ; UNE archive à extraire dans `Jeu/<extraire_dans>`.
         if let Some((archive, sous)) = forme_archive(&version, &noms)? {
@@ -1094,6 +1107,72 @@ impl Noyau {
         let i = self.retenir_installation(&j, &d, p.methode, None, p.nature, vec![])?;
         self.reposer_parties_restaurees(id, &i).await;
         Ok(i)
+    }
+
+    /// Défait la NOTE d'une installation qui n'a rien écrit (méthode `aucune`, ni lanceur ni fichier donné à un
+    /// émulateur) : le jeu redevient « téléchargé, pas installé ». Rien n'est effacé sur le disque : ses fichiers reçus
+    /// restent où ils sont ; le relevé des fichiers de cette installation (`manifeste.json`, propre à Frogtend) est
+    /// seulement mis de côté (renommé), pour ne jamais faire passer un fichier ajouté plus tard pour une partie.
+    /// Refus pour toute autre installation (un installeur, une archive décompressée, un lanceur déjà choisi…).
+    pub async fn installation_annuler(&self, id: i64) -> Resultat<()> {
+        // Jamais pendant une installation de ce jeu (la même exclusivité qu'`installer_suivi`).
+        let _seule = InstallationEnCours::prendre(&self.dossier, id)?;
+        if self.utilise(id) {
+            return Err(Erreur::Refus("Ce jeu est occupé (partie, téléchargement ou mise à l'abri en cours) : réessaie après.".into()));
+        }
+        let _occupe = self.occuper(id);
+        let j = self.jeu_visible(id).await?;
+        if crate::import_local::est_importe(&j) {
+            return Err(Erreur::Refus("Ce jeu vient de ton disque : il n'y a pas d'installation à défaire.".into()));
+        }
+        let i = j.installation.as_ref().ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
+        if !note_seule(i) {
+            return Err(Erreur::Refus(
+                "Cette installation a déjà mis en place le jeu (programme choisi, fichiers installés ou décompressés) : elle ne se défait pas ainsi.".into(),
+            ));
+        }
+        let manifeste = self.fichier_manifeste(id);
+        // Des parties apparues depuis la note (parties restaurées reposées à l'installation, une partie jouée) : sans
+        // la note, elles ne seraient plus reconnues ni sauvegardées. D'abord une COPIE à l'abri (rien n'est déplacé) ;
+        // impossible (dossier des abris non réglé…) : refus, rien ne change.
+        if manifeste.is_file() {
+            let m: Manifeste = std::fs::read(&manifeste).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+            let racine = PathBuf::from(&i.dossier);
+            let parties = if racine.is_dir() { crate::locale::parties_changees(&j, &racine, &m)? } else { vec![] };
+            if !parties.is_empty() {
+                let abri = self.mettre_a_l_abri(id).await.map_err(|e| {
+                    Erreur::Refus(format!("Des parties ont été posées dans ce jeu, et leur mise à l'abri a échoué ({e}) : l'installation n'est pas défaite."))
+                })?;
+                self.journaliser(&format!("jeu {id} : {} fichier(s) changé(s) depuis la note mis à l'abri avant de la défaire", abri.fichiers));
+            }
+        }
+        // Le registre d'abord : un échec y laisse tout comme avant (la note et son relevé).
+        self.registre().changer_installation(id, None)?;
+        if manifeste.is_file() {
+            let medias = self.dossier_medias(id);
+            let base = format!("manifeste.annule-{}", maintenant());
+            let mut de_cote = medias.join(format!("{base}.json"));
+            let mut k = 1;
+            while de_cote.exists() {
+                de_cote = medias.join(format!("{base}-{k}.json"));
+                k += 1;
+            }
+            if let Err(e) = std::fs::rename(&manifeste, &de_cote) {
+                self.journaliser(&format!("jeu {id} : relevé de l'installation défaite non mis de côté ({e})"));
+            }
+        }
+        self.journaliser(&format!("jeu {id} : note d'installation défaite (méthode « aucune », sans lanceur) — aucun fichier du jeu touché"));
+        Ok(())
+    }
+
+    /// L'installation de ce jeu est-elle à REFAIRE (sans rien retélécharger) ? Une note seule (voir `note_seule`) d'un
+    /// jeu que la préparation dit maintenant ROM ou image disque : il a été pris pour un jeu PC (MK8 Deluxe, 26/11).
+    pub async fn installation_refaisable(&self, id: i64) -> Resultat<bool> {
+        let j = self.jeu_visible(id).await?;
+        if id <= 0 || j.etat != Etat::Telecharge || crate::import_local::est_importe(&j) || !j.installation.as_ref().is_some_and(note_seule) {
+            return Ok(false);
+        }
+        Ok(self.preparer_installation(id).await.is_ok_and(|p| p.methode == Methode::Aucune && matches!(p.nature, Nature::Rom | Nature::ImageDisque)))
     }
 
     /// Le nom court MAME de la version installée (contrat 1.13), d'après la fiche gardée sur le PC.
@@ -2070,13 +2149,18 @@ mod tests {
 
     /// Un noyau avec un profil (simulé) qui voit Dune (110), et Dune « téléchargé » sur le PC avec les fichiers donnés.
     async fn noyau_avec(fichiers: &[(&str, &[u8])], qualite: &str) -> (tempfile::TempDir, Noyau) {
+        noyau_avec_sur("MS-DOS", fichiers, qualite).await
+    }
+
+    /// Comme `noyau_avec`, le jeu rangé sous la plateforme donnée.
+    async fn noyau_avec_sur(plateforme: &str, fichiers: &[(&str, &[u8])], qualite: &str) -> (tempfile::TempDir, Noyau) {
         let d = tempfile::tempdir().unwrap();
         let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
         let id = n.creer_profil("Seb", None, None).unwrap().id;
         n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
         n.synchroniser(|_, _| {}).await.unwrap();
 
-        let dossier = d.path().join("Jeux").join("MS-DOS").join("Dune (1992)");
+        let dossier = d.path().join("Jeux").join(plateforme).join("Dune (1992)");
         std::fs::create_dir_all(&dossier).unwrap();
         let mut fj = Vec::new();
         for (i, (nom, o)) in fichiers.iter().enumerate() {
@@ -2090,7 +2174,7 @@ mod tests {
                 id: 110,
                 version: 200,
                 titre: "Dune".into(),
-                plateforme: "MS-DOS".into(),
+                plateforme: plateforme.into(),
                 dossier: dossier.to_string_lossy().into(),
                 etat: Etat::Telecharge,
                 total,
@@ -2404,6 +2488,141 @@ mod tests {
         assert_eq!(i.fichier_du_jeu.as_deref(), Some("Dune (Europe).cue"), "le .cue décrit les pistes");
         assert!(matches!(n.jouer(110, None, None, None, &|_| {}).await, Err(Erreur::Reglage(_))));
         assert!(Path::new(&i.dossier).join("Dune (Europe).bin").is_file(), "rien n'est renommé ni déplacé");
+    }
+
+    /// Les fichiers DU JEU sous un dossier (sans le sous-dossier `Frogtend` des données propres à Frogtend) : (chemin
+    /// relatif, contenu), triés — pour prouver que rien n'a bougé.
+    fn photo(d: &Path) -> Vec<(String, Vec<u8>)> {
+        fn parcourir(racine: &Path, d: &Path, l: &mut Vec<(String, Vec<u8>)>) {
+            for e in std::fs::read_dir(d).unwrap().filter_map(|e| e.ok()) {
+                let c = e.path();
+                if c.is_dir() && d == racine && e.file_name() == "Frogtend" {
+                    continue;
+                }
+                if c.is_dir() {
+                    parcourir(racine, &c, l);
+                } else {
+                    l.push((c.strip_prefix(racine).unwrap().to_string_lossy().to_string(), std::fs::read(&c).unwrap()));
+                }
+            }
+        }
+        let mut l = Vec::new();
+        parcourir(d, d, &mut l);
+        l.sort();
+        l
+    }
+
+    #[tokio::test]
+    async fn annuler_le_choix_du_lanceur_defait_la_note_sans_toucher_au_disque() {
+        // Une nature non dite et un programme du jeu : installé « méthode aucune », le lanceur reste à choisir.
+        let (_d, n) = noyau_avec(&[("DUNE.EXE", b"MZ... un jeu"), ("DUNE.DAT", b"donnees")], "Jeu (nature non dite)").await;
+        let i = n.installer(110, true).await.unwrap();
+        assert_eq!(i.methode, Methode::Aucune);
+        assert!(i.lanceur.is_none() && i.fichier_du_jeu.is_none());
+        let dossier = PathBuf::from(&i.dossier);
+        let avant = photo(&dossier);
+        assert!(n.fichier_manifeste(110).is_file(), "le relevé d'un jeu PC est écrit à l'installation");
+
+        n.installation_annuler(110).await.unwrap();
+        assert!(n.registre().jeu(110).unwrap().unwrap().installation.is_none(), "le jeu redevient « téléchargé, pas installé »");
+        assert_eq!(n.registre().jeu(110).unwrap().unwrap().etat, Etat::Telecharge);
+        assert_eq!(photo(&dossier), avant, "aucun fichier du jeu effacé, déplacé ni changé");
+        assert!(!n.fichier_manifeste(110).exists(), "le relevé n'est plus celui d'une installation");
+        let de_cote = std::fs::read_dir(n.dossier_medias(110)).unwrap().filter_map(|e| e.ok()).any(|e| e.file_name().to_string_lossy().starts_with("manifeste.annule-"));
+        assert!(de_cote, "le relevé est mis de côté, jamais effacé");
+        assert!(n.installation_annuler(110).await.is_err(), "plus rien à défaire");
+        // Le jeu s'installe de nouveau normalement.
+        assert!(n.installer(110, true).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn annuler_met_d_abord_a_l_abri_les_parties_apparues_depuis_la_note() {
+        // Une partie posée dans le jeu après la note (partie restaurée reposée à l'installation, ou jouée).
+        let (d, n) = noyau_avec(&[("DUNE.EXE", b"MZ... un jeu")], "").await;
+        let i = n.installer(110, true).await.unwrap();
+        let dossier = PathBuf::from(&i.dossier);
+        std::fs::write(dossier.join("PARTIE1.SAV"), b"partie").unwrap();
+        let avant = photo(&dossier);
+        // Sans dossier des abris : refus, rien ne change (la note et son relevé restent).
+        assert!(matches!(n.installation_annuler(110).await, Err(Erreur::Refus(_))));
+        assert_eq!(n.registre().jeu(110).unwrap().unwrap().installation, Some(i.clone()));
+        assert!(n.fichier_manifeste(110).is_file());
+        // Avec : une COPIE à l'abri d'abord, puis la note défaite ; la partie reste aussi dans le jeu.
+        n.regler_abris(Some(d.path().join("Abris")));
+        n.installation_annuler(110).await.unwrap();
+        assert!(n.registre().jeu(110).unwrap().unwrap().installation.is_none());
+        assert_eq!(photo(&dossier), avant, "rien n'est déplacé ni effacé");
+        let abris: Vec<PathBuf> = std::fs::read_dir(d.path().join("Abris").join("110")).unwrap().filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        assert_eq!(abris.len(), 1);
+        assert_eq!(std::fs::read(abris[0].join("PARTIE1.SAV")).unwrap(), b"partie");
+    }
+
+    #[tokio::test]
+    async fn annuler_refuse_un_lanceur_choisi_ou_une_autre_methode() {
+        // Un lanceur déjà choisi : refus, rien ne change.
+        let (_d, n) = noyau_avec(&[("DUNE.EXE", b"MZ... un jeu")], "").await;
+        let mut i = n.installer(110, true).await.unwrap();
+        i.lanceur = Some(Lanceur { programme: Path::new(&i.dossier).join("DUNE.EXE").to_string_lossy().into(), arguments: vec![], dossier: i.dossier.clone() });
+        n.registre().changer_installation(110, Some(&i)).unwrap();
+        assert!(matches!(n.installation_annuler(110).await, Err(Erreur::Refus(_))));
+        assert_eq!(n.registre().jeu(110).unwrap().unwrap().installation, Some(i.clone()), "la note reste entière");
+        // Un fichier donné à un émulateur (image disque installée) : refus.
+        let (_d2, n2) = noyau_avec(&[("Dune.iso", b"ISO")], "Image disque").await;
+        assert!(n2.installer(110, true).await.unwrap().fichier_du_jeu.is_some());
+        assert!(matches!(n2.installation_annuler(110).await, Err(Erreur::Refus(_))));
+        // Une archive décompressée : refus, et ce qui a été décompressé reste.
+        let (_d3, n3) = noyau_avec(&[("jeu.zip", &zip(&[("JEU.EXE", b"MZ")]))], "").await;
+        let i3 = n3.installer(110, true).await.unwrap();
+        assert!(matches!(i3.methode, Methode::Archive { .. }));
+        let avant = photo(Path::new(&i3.dossier));
+        assert!(matches!(n3.installation_annuler(110).await, Err(Erreur::Refus(_))));
+        assert!(n3.registre().jeu(110).unwrap().unwrap().installation.is_some());
+        assert_eq!(photo(Path::new(&i3.dossier)), avant);
+    }
+
+    #[tokio::test]
+    async fn refaire_l_installation_de_mk8_prise_pour_un_jeu_pc() {
+        // L'état EXACT de Seb le 26/11 (jeux.db), que la fiche gardée dise encore « nature non dite » ou déjà
+        // « image disque » (corrigée par Firehouse).
+        let mk8 = "Mario Kart 8 Deluxe (v3.01 Incl All DLC) (EU) SuperXCI - MBC.xci";
+        for qualite in ["Jeu (nature non dite)", "Jeu — image disque"] {
+            let (_d, n) = noyau_avec_sur("Nintendo Switch", &[(mk8, b"HEAD")], qualite).await;
+            let dossier = n.registre().jeu(110).unwrap().unwrap().dossier;
+            let seb = serde_json::json!({"dossier": dossier, "methode": {"sorte": "aucune"}, "lanceur": null, "fichier_du_jeu": null, "installe_le": "1795699748"});
+            let i: Installation = serde_json::from_value(seb).unwrap();
+            n.registre().changer_installation(110, Some(&i)).unwrap();
+            let avant = photo(Path::new(&dossier));
+            assert!(n.installation_refaisable(110).await.unwrap(), "{qualite} : à refaire");
+
+            // « 📦 Refaire l'installation » : la note défaite, puis l'installation normale.
+            n.installation_annuler(110).await.unwrap();
+            let p = n.preparer_installation(110).await.unwrap();
+            assert_eq!(p.nature, Nature::ImageDisque, "{qualite}");
+            let i = n.installer(110, true).await.unwrap();
+            assert_eq!(i.methode, Methode::Aucune);
+            assert_eq!(i.fichier_du_jeu.as_deref(), Some(mk8), "{qualite} : le .xci donné à l'émulateur, jamais renommé");
+            assert_eq!(photo(Path::new(&dossier)), avant, "{qualite} : rien retéléchargé, effacé ni renommé");
+            assert!(!n.installation_refaisable(110).await.unwrap(), "{qualite} : plus rien à refaire");
+        }
+    }
+
+    #[tokio::test]
+    async fn une_nature_non_dite_xci_va_a_l_emulateur_un_exe_reste_un_jeu_pc() {
+        let (_d, n) = noyau_avec_sur("Nintendo Switch", &[("Jeu.xci", b"HEAD")], "Jeu (nature non dite)").await;
+        let p = n.preparer_installation(110).await.unwrap();
+        assert_eq!((p.nature, p.methode), (Nature::ImageDisque, Methode::Aucune));
+        assert_eq!(n.installer(110, true).await.unwrap().fichier_du_jeu.as_deref(), Some("Jeu.xci"));
+
+        let (_d2, n2) = noyau_avec_sur("Nintendo Switch", &[("Jeu.exe", b"MZ... un jeu")], "Jeu (nature non dite)").await;
+        let p2 = n2.preparer_installation(110).await.unwrap();
+        assert_eq!(p2.nature, Nature::NonDite, "un .exe : la voie PC");
+        let i2 = n2.installer(110, true).await.unwrap();
+        assert!(i2.fichier_du_jeu.is_none(), "son lanceur reste à choisir");
+        assert!(!n2.installation_refaisable(110).await.unwrap(), "un vrai jeu PC n'est jamais « à refaire »");
+
+        // Une archive d'un jeu Switch de nature non dite : jamais donnée telle quelle à l'émulateur.
+        let (_d3, n3) = noyau_avec_sur("Nintendo Switch", &[("jeu.zip", &zip(&[("Jeu.xci", b"HEAD")]))], "").await;
+        assert!(matches!(n3.preparer_installation(110).await.unwrap().methode, Methode::Archive { .. }));
     }
 
     /// Une carte e-Reader en 7z, avec ses bandes.

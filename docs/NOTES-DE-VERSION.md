@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.229.1 — 📦 Un jeu Switch n'est plus pris pour un jeu PC
+
+- Corrigé : un jeu de console servi sans sa nature (« nature non dite ») mais dont le fichier est une image de jeu de
+  sa console (par exemple un .xci de Switch, un .iso ou .chd de PS2) se prépare pour son émulateur, comme les autres.
+  Un .exe ou une archive reste un jeu PC.
+- Corrigé : « Annuler » à la question « 🎯 Qu'est-ce qui lance… ? », juste après « 📦 Installer », ne laisse plus un
+  jeu à moitié installé. Le jeu redevient « téléchargé, pas installé » ; rien n'est effacé, et « 📦 Installer » revient.
+  Pareil au canapé.
+- Pour un jeu déjà pris pour un jeu PC (Mario Kart 8 Deluxe chez Seb) : « ⚙ Gérer le jeu ▸ 📦 Refaire l'installation
+  (rien n'est retéléchargé) ». Le jeu se prépare alors pour son émulateur ; aucun fichier n'est effacé.
+
 ## 0.229.0 — 🎵 Les musiques des mods de Mario Kart 8 Deluxe
 
 - Nouveau (essai avec Seb d'abord, pas encore pour la famille) : les mods Switch qui changent des musiques de

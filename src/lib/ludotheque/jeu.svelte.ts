@@ -43,6 +43,7 @@ import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
 import { blocVortexVisible } from '$lib/mods/vortex';
 import { aDesEmplacements } from '$lib/parties/parties';
 import { avecAbriAvant } from '$lib/parties/abriAvant';
+import { choisirOuDefaire, OPTION_REFAIRE, refaire, refaireAVerifier } from './refaireInstallation';
 
 /** `affichee` : la fenêtre du jeu en cours est apparue (l'écran de lancement se cache, lot 4c). */
 export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null; affichee: boolean; relance: boolean }>({
@@ -303,7 +304,22 @@ export async function installer(id: number): Promise<boolean> {
     return true;
   }
   toast(`✅ « ${p.titre} » est installé. Reste à choisir ce qui le lance.`);
-  return choisirLanceur(id);
+  // 0.229.1 : sans lanceur choisi (« Annuler », Taodbox), l'installation tout juste notée est défaite — rien n'est
+  // effacé, et « 📦 Installer » revient (sinon le jeu restait « installé » sans rien pour le lancer).
+  return choisirOuDefaire(id, { choisirLanceur, installationDe: (x) => tele.jeux[x]?.installation, annuler: (x) => defaireLaNote(x, p.titre) });
+}
+
+/** Défait la note d'installation (le cœur refuse si elle a déjà mis le jeu en place) ; ses fichiers ne bougent pas. */
+async function defaireLaNote(id: number, titre: string) {
+  try {
+    await api.installationAnnuler(id);
+  } catch (e) {
+    // Refusé (des parties posées dans le jeu dont l'abri a échoué…) : rien n'a changé, et la personne le sait.
+    toast(`L’installation de « ${titre} » reste notée : ${motifDuRefus(e)}`, 'erreur');
+    return;
+  }
+  await apresChangement();
+  toast(`« ${titre} » n’est pas installé : rien n’a été effacé, « 📦 Installer » reste possible.`);
 }
 
 /** Choisir ce qui lance le jeu : les candidats trouvés dans son dossier, ou un autre programme. */
@@ -1702,13 +1718,18 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'parties' | 'delier' | 'retirer' | 'reglagesSwitch';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'refaire' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'parties' | 'delier' | 'retirer' | 'reglagesSwitch';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
+  // 0.229.1 (MK8 Deluxe, 26/11) : un jeu d'émulateur pris pour un jeu PC (installation « aucune » sans lanceur) — la
+  // refaire, sans rien retélécharger ni effacer. Le cœur relit sa fiche et décide.
+  const aRefaire = refaireAVerifier(id, j) && (await api.installationRefaisable(id).catch(() => false));
+  if (aRefaire) options.push({ valeur: 'refaire', ...OPTION_REFAIRE });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
   // son dossier (ni mods, ni abri pour l'instant).
   const deBoutique = !!j.installation?.boutique;
-  if (j.installation && !j.installation.fichier_du_jeu && !deBoutique)
+  // (Pas pour un jeu d'émulateur à refaire : ses « programmes » ne le lanceraient pas.)
+  if (j.installation && !j.installation.fichier_du_jeu && !deBoutique && !aRefaire)
     options.push({ valeur: 'lanceur', libelle: '🎯 Changer ce qui lance le jeu' });
   const versions = j.installation?.versions ?? [];
   // Au canapé, pas de bouton « Jouer avec… » : une autre version (ou un autre émulateur) pour CETTE partie, par Y.
@@ -1820,6 +1841,13 @@ export async function gererJeu(id: number) {
   // Vers les versions de SA fiche : la page y descend elle-même une fois chargée (`?vers=versions`).
   else if (c === 'autreVersion') await goto(`/jeu/${id}?vers=versions`);
   else if (c === 'installer') await installer(id);
+  else if (c === 'refaire') {
+    try {
+      await refaire(id, { annuler: (x) => api.installationAnnuler(x), recharger: apresChangement, installer });
+    } catch (e) {
+      toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
   else if (c === 'lanceur') await choisirLanceur(id);
   else if (c === 'version') await choisirVersionParDefaut(id);
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);

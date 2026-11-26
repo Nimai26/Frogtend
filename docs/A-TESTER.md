@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 📦 Mario Kart 8 Deluxe pris pour un jeu PC (0.229.1)
+- [ ] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe ▸ ⚙ Gérer le jeu : la ligne « 📦 Refaire l'installation (rien
+      n'est retéléchargé) » est là, et « 🎯 Changer ce qui lance le jeu » n'y est plus.
+- [ ] 2. La choisir : aucune fenêtre « Qu'est-ce qui lance… ? » ; le message « ✅ … est prêt : il se lance par
+      l'émulateur de son système ». La fiche ne dit plus « Le fichier de ce jeu est introuvable ».
+- [ ] 3. Le fichier .xci est toujours là, même nom, même taille (12 Go) ; ▶ Jouer lance le jeu dans l'émulateur.
+- [ ] 4. ⚙ Gérer le jeu : « Refaire l'installation » n'y est plus.
+
 ## 🎵 Musiques des mods de Mario Kart 8 Deluxe (0.229.0, contrat 1.55) — essai avec Seb
 - [ ] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe ▸ Mods : « DK Summit » ; l'allumer (ou le télécharger) : la
       fenêtre annonce « + 39,1 Mo de musiques ». Oui.

@@ -2643,6 +2643,19 @@ pub async fn installation_ailleurs(
     noyau.installe_ailleurs(id, &dossier).await
 }
 
+/// Défait la note d'une installation qui n'a rien écrit (méthode « aucune », sans lanceur) : rien n'est effacé sur le
+/// disque, le jeu redevient « téléchargé, pas installé » (« Annuler » au choix du lanceur, MK8 Deluxe 26/11).
+#[tauri::command]
+pub async fn installation_annuler(noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
+    noyau.installation_annuler(id).await
+}
+
+/// L'installation de ce jeu est-elle à refaire (prise pour un jeu PC alors qu'il se joue par un émulateur) ?
+#[tauri::command]
+pub async fn installation_refaisable(noyau: State<'_, Noyau>, id: i64) -> Resultat<bool> {
+    noyau.installation_refaisable(id).await
+}
+
 #[tauri::command]
 pub async fn lancement_candidats(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::installation::Candidat>> {
     noyau.candidats_lancement(id).await

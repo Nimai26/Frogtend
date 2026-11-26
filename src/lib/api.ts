@@ -147,6 +147,8 @@ export interface Installation {
   versions?: import('$lib/ludotheque/versions').VersionLocale[];
   /** Un jeu d'une boutique (Steam…), lancé par elle ; Frogtend n'écrit jamais dans son dossier. */
   boutique?: { source: string; cle: string } | null;
+  /** Les fichiers que Frogtend a décompressés à côté des fichiers reçus (absent s'il n'y en a pas). */
+  extraits?: string[];
 }
 
 export interface Preparation {
@@ -1286,6 +1288,10 @@ export const api = {
   /** `suivi` : l'avancement de la décompression arrive par « mod-progres » sous ce numéro (voir `avecProgres`). */
   installer: (id: number, automatique: boolean, suivi: number | null = null) => appeler<Installation>('installation_lancer', { id, automatique, suivi }),
   installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
+  /** Défait la note d'une installation qui n'a rien écrit (méthode « aucune », sans lanceur) : rien n'est effacé. */
+  installationAnnuler: (id: number) => appeler<void>('installation_annuler', { id }),
+  /** L'installation est-elle à refaire (prise pour un jeu PC alors qu'il se joue par un émulateur, 0.229.1) ? */
+  installationRefaisable: (id: number) => appeler<boolean>('installation_refaisable', { id }),
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
   rpcs3InstallerMicrologiciel: (programme: string, pup: string) => appeler<string>('rpcs3_installer_micrologiciel', { programme, pup }),

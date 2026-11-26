@@ -24,6 +24,7 @@ Règles :
 2. Lis l'existant avant de proposer : le code, la doc du projet, la doc officielle de l'outil ou de l'API (et son journal des changements). On ne conclut jamais « impossible » sans avoir lu la doc.
 3. Vérifie l'état réel avant de poser une question : ce que tu peux lire toi-même (fichier, config, réponse de l'API), tu le lis. Tu ne demandes à Seb que ce que lui seul sait.
 4. Un lot = une livraison : petit, testé, versionné. Un lot de trois jours se coupe en trois.
+5. **Note d'évolution à chaque livraison (Seb, 26/11/2026)** : après la publication (release vérifiée), déposer UNE note `X:\evolutions\frogtend\AAAAMMJJ-HHMM-<version>.md` (en-tête `---`, `titre:`, `audience: admin` ou `tous`, puis le texte en français simple : pour qui, ce que ça fait, ce qui reste à essayer). Jamais réécrite ; jamais de secret, jeton ni chemin privé ; 64 Ko max. Firehouse la publie dans ses News pour Shyrka, Shaina et Flip. Mode d'emploi : `X:\evolutions\LISEZ-MOI.md`.
 
 ## 3. Les experts : la mémoire du projet, convoquée avant chaque livraison
 Un expert est un SOUS-AGENT EN LECTURE SEULE, spécialiste d'un domaine. Il relit le code réel et cite `fichier:ligne`, ou dit « je ne sais pas ». Il ne code pas : il vérifie un plan, relit une livraison, trouve ce que tu as oublié.
