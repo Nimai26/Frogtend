@@ -602,6 +602,7 @@ recette ; Firehouse 3.356.0 en tests) :
   au nouveau dossier) → restaurer ; aucun chemin à réécrire ; compte Microsoft, réglages, cartes et temps de jeu
   conservés ; le raccourci du Bureau pointe vers le nouveau dossier ; Prism reprend le Java restauré sans JavaPath.
   Installeur inchangé (même sha256). ⚠ La RÉVISION de la recette, elle, CHANGE (49732c440889a64d) parce que le texte d'une précaution entre dans son empreinte : **côté Frogtend, une réinstallation se décide sur le sha256 / la version de l'installeur et la commande de lancement, JAMAIS sur la seule révision** (un changement de texte n'impose rien).
+  **3.364.2 (26/11)** : `revision` = empreinte de ce qui demande une ACTION (actions SANS precautions, a_confirmer, a_la_main, + adresses) ; NOUVEAU `revision_textes` = empreinte de TOUT (textes et infos compris). minecraft-hikari : revision cecd118f39e7033d, revision_textes 5ae60ee130b4c70f. GET /serveurs sert toujours recette.revision (l'action seule).
 
 **Palworld** : [installer_jeu (Steam 1623730), lancer (dans le jeu : « Rejoindre une partie multijoueur », saisir
 l'adresse)].
