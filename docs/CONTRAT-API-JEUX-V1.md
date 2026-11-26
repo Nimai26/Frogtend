@@ -589,6 +589,20 @@ recette ; Firehouse 3.356.0 en tests) :
   personne sans son accord ET celui de Seb ». La règle de Frogtend (accord de l'utilisateur) est que l'accord se
   demande à la PERSONNE qui utilise ce PC : à confirmer avec Seb au début du lot.
 
+**Déplacement PROUVÉ (26/11, essai réel de la session Minecraft avec Seb ; Firehouse 3.364.1)** :
+- `a_garder` : accounts.json, java\, **assets\, libraries\, meta\** (sinon ≈ 600 Mo retéléchargés),
+  instances\Hikari\.minecraft\ en entier.
+- `ne_pas_restaurer` : .minecraft\hikari-lanceur.jar, .minecraft\packwiz-installer-bootstrap.jar,
+  instances\Hikari\instance.cfg, **instances\Hikari\mmc-pack.json**, prismlauncher.cfg.
+- NOUVEAU `deplacement.pare_feu` (texte) : au 1er lancement après le déplacement, Windows affiche « Autoriser l'accès »
+  pour javaw.exe (nouveau chemin = nouveau programme pour le pare-feu), parfois avec un mot de passe administrateur.
+  Ce n'est donc PAS invisible : l'écran de Frogtend doit PRÉVENIR la personne AVANT de déplacer, et proposer l'autre
+  choix, `si_risque` (laisser en place, lancer depuis InstallLocation).
+- Vérifié : sauvegarder → désinstaller → réinstaller avec /DIR (le /DIR explicite après désinstallation installe bien
+  au nouveau dossier) → restaurer ; aucun chemin à réécrire ; compte Microsoft, réglages, cartes et temps de jeu
+  conservés ; le raccourci du Bureau pointe vers le nouveau dossier ; Prism reprend le Java restauré sans JavaPath.
+  Installeur et révision de la recette inchangés.
+
 **Palworld** : [installer_jeu (Steam 1623730), lancer (dans le jeu : « Rejoindre une partie multijoueur », saisir
 l'adresse)].
 
