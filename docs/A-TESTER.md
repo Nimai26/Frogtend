@@ -28,7 +28,7 @@
       musique dès la première seconde ; passer le « dernier tour » ; menus et résultats sans plantage.
 - [ ] 4. Fiche : « 🎵 Musiques de 1 mod, préparées par Firehouse ».
 - [x] 5. Éteindre DK Summit, relancer : musique d'origine, le dossier « !Firehouse - musiques » a disparu.
-- [ ] 6. (Plus tard) La même chose dans Eden, et au canapé.
+- [ ] 6. (Plus tard) La même chose dans Ryubing, et au canapé.
 
 ## ▶ Jeux GOG lancés sans Galaxy (0.228.0, lot C4c-1)
 - [x] 1. Mettre à jour, GOG Galaxy FERMÉ. Fiche de Cyberpunk : sous ▶ Jouer, la phrase « Lancé directement, sans GOG
