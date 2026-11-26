@@ -601,7 +601,7 @@ recette ; Firehouse 3.356.0 en tests) :
 - Vérifié : sauvegarder → désinstaller → réinstaller avec /DIR (le /DIR explicite après désinstallation installe bien
   au nouveau dossier) → restaurer ; aucun chemin à réécrire ; compte Microsoft, réglages, cartes et temps de jeu
   conservés ; le raccourci du Bureau pointe vers le nouveau dossier ; Prism reprend le Java restauré sans JavaPath.
-  Installeur et révision de la recette inchangés.
+  Installeur inchangé (même sha256). ⚠ La RÉVISION de la recette, elle, CHANGE (49732c440889a64d) parce que le texte d'une précaution entre dans son empreinte : **côté Frogtend, une réinstallation se décide sur le sha256 / la version de l'installeur et la commande de lancement, JAMAIS sur la seule révision** (un changement de texte n'impose rien).
 
 **Palworld** : [installer_jeu (Steam 1623730), lancer (dans le jeu : « Rejoindre une partie multijoueur », saisir
 l'adresse)].
