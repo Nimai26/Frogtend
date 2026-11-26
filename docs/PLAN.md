@@ -1080,6 +1080,7 @@ message vers Galaxy (aucune élévation), secours Galaxy dit AVANT l'attente (bu
 la fiche (`gog_lancement_direct`). Revue de l'expert lancement : 0 bloquant, 5 importants corrigés. Incident : un test
 du codeur a ouvert 2 fenêtres d'erreur Windows chez Seb (`cmd /C start` mal formé) — test réécrit sans processus ;
 leçon : jamais de `start`, ShellExecute ni explorer dans un test.
+**✅ C4c-1 VALIDÉ par Seb le 26/11** (étapes 1–4 : Cyberpunk lancé par sa tâche game, 175 s, 203 fichiers à l'abri et envoyés ; HZD lancé directement, 86 s, 5 fichiers à l'abri ; aucun processus ni service Galaxy ; étape 5 Taodbox à la prochaine séance canapé). Remarque de Seb : le menu de ReShade s'affiche au lancement de HZD (ReShade posé à la main dans le dossier du jeu) — à recenser dans l'inventaire du « grand ménage » (outils gérés par Firehouse).
 
 **Ordre en cours (Seb, 22/11)** : lot **S** (S1 livré en 0.220.0-0.220.1 ; puis S2 à S7) → lot **R** (recompilations,
 ci-dessous) → **C4c** (installer et lancer les jeux GOG sans Galaxy, fenêtre d'attente GOG).

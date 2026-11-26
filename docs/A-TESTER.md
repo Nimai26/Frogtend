@@ -12,7 +12,7 @@
 - [x] 2. Pendant la partie : le menu en jeu s'ouvre ; « Quitter » ferme bien le jeu (ou quitter depuis le jeu).
 - [x] 3. Après la partie : Galaxy toujours fermé ; le bloc 🧩 Mods n'est PAS bloqué ; l'agent regarde le journal
       (temps de jeu, fin de session, abri des parties) et si un service de Galaxy s'est réveillé.
-- [ ] 4. Un autre jeu GOG (Horizon Zero Dawn par exemple) : il démarre directement aussi.
+- [x] 4. Un autre jeu GOG (Horizon Zero Dawn par exemple) : il démarre directement aussi.
 - [ ] 5. (Canapé, plus tard) Les étapes 1 à 3 depuis Taodbox, à la manette.
 
 ## 🧩 Les mods remis se voient (0.227.1)
