@@ -27,7 +27,7 @@
 - [x] 3. Faire une course sur GCN ROYAUME SORBET (Coupe Feuille, 2e course) : c'est le circuit DK Summit, avec SA
       musique dès la première seconde ; passer le « dernier tour » ; menus et résultats sans plantage.
 - [ ] 4. Fiche : « 🎵 Musiques de 1 mod, préparées par Firehouse ».
-- [ ] 5. Éteindre DK Summit, relancer : musique d'origine, le dossier « !Firehouse - musiques » a disparu.
+- [x] 5. Éteindre DK Summit, relancer : musique d'origine, le dossier « !Firehouse - musiques » a disparu.
 - [ ] 6. (Plus tard) La même chose dans Eden, et au canapé.
 
 ## ▶ Jeux GOG lancés sans Galaxy (0.228.0, lot C4c-1)
