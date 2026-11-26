@@ -505,6 +505,37 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.55 (25/11, en service ; reçu complet le 26/11) — 🎵 musiques de Mario Kart 8 Deluxe : `amorces` et BGM.bars fabriqué
+Reçu par message de la session Firehouse (26/11), texte du BRIEF § 1.55 + exemple réel mesuré le 26/11.
+⚠️ À ne PAS proposer à la famille avant l'essai réel avec Seb sur Venkman.
+
+- Chaque mod de `/switch/{tid}/mods` porte **`amorces`** : la liste (chaînes) des entrées du `BGM.bars` qu'il remplace ;
+  `[]` = mod sans musique (TOUS les mods portent le champ ; 45 sur 363 pour MK8D). Un mod relève du mécanisme quand
+  `amorces` est NON VIDE. Les amorces sont gardées par Firehouse, jamais dans l'archive : un BGM.bars complet livré par
+  un mod (fait pour une autre version du jeu) est converti en amorces puis retiré de l'archive (sa `revision` monte).
+- **`GET|HEAD /switch/{tid}/bgm-bars?mods=<cle>,<cle>`** rend le BGM.bars de la VERSION SERVIE avec ces amorces,
+  fabriqué et relu par Firehouse. Il se pose dans **`romfs/Audio/Static/BGM.bars`**. UN SEUL BGM.bars pour TOUS les
+  mods de musique actifs du jeu. Réponse réelle (26/11, `mods=gamebanana-ee3c0683c3f6`, DK Summit) : 200,
+  `application/octet-stream`, `Content-Disposition: attachment; filename="BGM.bars"`, 41 018 496 octets, `ETag` = sha256
+  entre guillemets, `X-Sha256` (à vérifier après réception), `X-Version-Jeu: 1179648`, `X-Amorces:
+  pBGM_GC_SHERBET_LAND_F,pBGM_GC_SHERBET_LAND_N`, `Cache-Control: private, no-cache`, `Range` accepté (206,
+  `Accept-Ranges: bytes`). `HEAD` : mêmes en-têtes sans corps (comparer `X-Sha256` avec le fichier posé). `mods=` vide →
+  l'ORIGINAL de la version servie : inutile à poser. Accès : même garde que `/switch/{tid}/mods`.
+- Erreurs (corps JSON) : 409 `{ok: false, code: "conflit", detail, entrees: {"pBGM_…": [cle1, cle2]}}` (deux mods actifs
+  veulent la même amorce : la personne choisit lequel garder, rien n'est posé) ; 409 `{code: "original_absent"}`
+  (original de la version servie pas encore extrait : réessayer plus tard, ne rien poser, GARDER l'existant) ; 404
+  `{code: "introuvable"}` (clé inconnue, retirée ou réservée).
+- Un mod de musique qui s'ÉTEINT : refabriquer avec les AUTRES mods de musique encore actifs ; s'il n'en reste AUCUN,
+  RETIRER le BGM.bars posé (le jeu reprend son original).
+- Quand refabriquer : l'ensemble des mods de musique actifs change ; la `revision` d'un d'eux monte ;
+  `version_servie.version` change (`X-Version-Jeu` du fichier posé ≠ version servie). Le plus simple : un `HEAD` avec la
+  liste active, et retélécharger si `X-Sha256` diffère du fichier posé.
+- Exemple réel de `version_servie` (MK8D, 26/11) : `{version: 1179648, version_affichee: "3.0.1", build_id:
+  "9EF5CAA2D5B933C772358C5AA6FABA15"}` ; DK Summit : `{cle: "gamebanana-ee3c0683c3f6", nom: "DK Summit", revision: 2,
+  amorces: ["pBGM_GC_SHERBET_LAND_F", "pBGM_GC_SHERBET_LAND_N"], …}`.
+- Où le poser côté Frogtend : à proposer à Firehouse (un dossier de mod à part, ex. « Firehouse — musiques », ne
+  contenant que `romfs/Audio/Static/BGM.bars`, à côté des dossiers des mods).
+
 ### 1.54 (25/11, Firehouse 3.338.0, EN SERVICE, complet) — le relais NEXUS MODS par Firehouse (besoin 61)
 **Lot N3 EN SERVICE (Firehouse 3.338.0, 25/11), en-tête X-Api-Jeux-Version: 1.54** : compatibilite, renseigne. Essai réel de Firehouse sur Cyberpunk 2.50 (sortie 22/10/2026, 2.500.100, date tenue avec sa source) : CET 107 → compatible true, certitude haute, « le fichier cite la version 2.5 du jeu » (fichier 168615), derniere_compatible {168615, 1.38.1} ; ArchiveXL 4198 → compatible null (seule la page cite la 2.5 ; prérequis RED4ext 2380 pas jugé compatible), requis [{RED4ext, 2380, version_min null}]. version_jeu_reconnue « 2.5 » : « 2.50 » et « 2.5 » = même version. Aucun LLM ; renseigne relit Nexus sans cache (fait / impossible).
 **Lot N1 EN SERVICE (Firehouse 3.336.0, 25/11)** : `etat`, `jeux`, `mod` (`?prerequis=1`), `fichiers`, `md5`, `maj` ; PAS ENCORE : `obtenir` + `archive` (N2), `compatibilite` + `renseigne` (N3) ; en-tête encore `X-Api-Jeux-Version: 1.53` jusqu'à la fin de N3. Essais réels de Firehouse : Premium reconnu ; quota 20 000/jour et 2 000/heure ; `cyberpunk2077` = game_id 3333 ; CET (107) v1.38.1 : 130 fichiers, `sizeInBytes` pour tous ; prérequis GraphQL OK (CET : aucun) ; refus de clé pas encore vu.
