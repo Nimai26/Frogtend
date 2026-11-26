@@ -505,6 +505,29 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.59 (26/11, Firehouse 3.368.0, EN SERVICE, `X-Api-Jeux-Version: 1.59`) — 🧸 COLLECTION : les objets liés à un jeu
+Reçu par message de la session Firehouse (26/11). Ajout compatible, lecture seule, PAS urgent : avec la 1.58, après les
+chantiers en cours. Décision de Seb côté Firehouse : « oui pour les objets, les franchises se rattachent, oui pour les
+personnages ».
+
+`GET /jeu/{id}` → `jeu.collection`, TOUJOURS présent :
+`{nombre, objets [{id, nom, proprietaire, mien, ouvrir}], univers [{id, nom, nombre, personnages [{nom, objets}], objets [… idem]}]}`
+- `objets` : les objets qui SONT ce jeu (sa boîte, sa cartouche…), reliés par identifiant (LaunchBox, IGDB).
+- `univers[]` : pour chaque univers du jeu, les objets de ses œuvres et des franchises rattachées (figurines,
+  peluches…), avec les PERSONNAGES (« Leonardo », 7 objets).
+- FILTRÉ pour CE jeton : les objets de la personne + ceux des autres seulement s'ils sont publics ; un objet privé
+  n'est ni rendu ni compté ; un mineur suit son réglage. Jamais de prix, de date, de lieu ni de notes.
+- `mien` : l'objet est à cette personne ; sinon afficher « chez <proprietaire> » (`proprietaire` = identifiant du compte).
+- `ouvrir` = `{ou: "firehouse", chemin: "/?panel=collection&item=<id>[&owner=<proprietaire>]"}` : adresse Firehouse
+  réglée + `chemin`, dans le navigateur (lecture seule si l'objet n'est pas à la personne).
+- Au plus 30 objets par liste ; `nombre` donne le vrai total.
+- Exemple réel (`GET /jeu/8433`, Castlevania II NES, jeton de Seb) : `{"nombre":1,"objets":[{"id":878,"nom":"Castlevania
+  II: Simon's Quest","proprietaire":"sebastien","mien":true,"ouvrir":{"ou":"firehouse","chemin":"/?panel=collection&item=878"}}],"univers":[]}`.
+  Univers validé, par exemple : `{"id":18,"nom":"Tortues Ninja","nombre":377,"personnages":[{"nom":"Leonardo","objets":7}],"objets":[…]}`.
+  Au 26/11, tous les univers attendent la validation de Seb : `univers` est vide partout.
+- Écran suggéré : « 🧸 Dans ta collection : la boîte · chez floriane : … » sous la fiche du jeu.
+- Comme pour toute donnée reçue par un jeton : jamais mise en cache pour un autre profil.
+
 ### 1.58 (26/11, Firehouse 3.366.0, EN SERVICE, `X-Api-Jeux-Version: 1.58`) — 🔗 TRANSMEDIA : œuvres liées et univers d'un jeu
 Reçu par message de la session Firehouse (26/11). Ajout compatible, lecture seule, PAS urgent : après les chantiers en
 cours (MK8, C4c-2, serveurs 1.56). La 1.57 (bonus GOG) reste un PROJET non servi (en attente de l'extrait réel
