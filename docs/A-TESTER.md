@@ -7,9 +7,9 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🎵 Version d'un jeu Switch tout-en-un (0.229.2)
-- [ ] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe : la ligne « 🎵 La version du jeu utilisée n'est pas connue… » a
+- [x] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe : la ligne « 🎵 La version du jeu utilisée n'est pas connue… » a
       disparu ; le bloc 📦 dit « Mise à jour comprise dans le fichier du jeu, utilisée par Eden ».
-- [ ] 2. Éteindre puis rallumer DK Summit : la fenêtre annonce « + 39,1 Mo de musiques ». (Suite : bloc 0.229.0.)
+- [x] 2. Éteindre puis rallumer DK Summit : la fenêtre annonce « + 39,1 Mo de musiques ». (Suite : bloc 0.229.0.)
 
 ## 📦 Mario Kart 8 Deluxe pris pour un jeu PC (0.229.1)
 - [x] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe ▸ ⚙ Gérer le jeu : la ligne « 📦 Refaire l'installation (rien
