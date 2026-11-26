@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🧩 La page des mods d'un jeu (0.230.0)
-- [ ] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe : la bande ne montre qu'un résumé et « 🧩 Ouvrir les mods (363) » ;
+- [x] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe : la bande ne montre qu'un résumé et « 🧩 Ouvrir les mods (363) » ;
       le clic ouvre la page ; Échap revient, et le bouton est de nouveau choisi.
 - [ ] 2. Page : les onglets avec leur nombre ; un filtre, puis le même bouton pour l'enlever ; taper « donkey » dans la
       recherche ; Échap vide le champ.
