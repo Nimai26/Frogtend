@@ -9,8 +9,8 @@
 ## ▶ Jeux GOG lancés sans Galaxy (0.228.0, lot C4c-1)
 - [x] 1. Mettre à jour, GOG Galaxy FERMÉ. Fiche de Cyberpunk : sous ▶ Jouer, la phrase « Lancé directement, sans GOG
       Galaxy… ». ▶ Jouer : le jeu démarre SANS l'écran noir du lanceur de CD Projekt, et Galaxy ne s'ouvre pas.
-- [ ] 2. Pendant la partie : le menu en jeu s'ouvre ; « Quitter » ferme bien le jeu (ou quitter depuis le jeu).
-- [ ] 3. Après la partie : Galaxy toujours fermé ; le bloc 🧩 Mods n'est PAS bloqué ; l'agent regarde le journal
+- [x] 2. Pendant la partie : le menu en jeu s'ouvre ; « Quitter » ferme bien le jeu (ou quitter depuis le jeu).
+- [x] 3. Après la partie : Galaxy toujours fermé ; le bloc 🧩 Mods n'est PAS bloqué ; l'agent regarde le journal
       (temps de jeu, fin de session, abri des parties) et si un service de Galaxy s'est réveillé.
 - [ ] 4. Un autre jeu GOG (Horizon Zero Dawn par exemple) : il démarre directement aussi.
 - [ ] 5. (Canapé, plus tard) Les étapes 1 à 3 depuis Taodbox, à la manette.
