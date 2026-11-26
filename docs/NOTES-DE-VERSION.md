@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.229.0 — 🎵 Les musiques des mods de Mario Kart 8 Deluxe
+
+- Nouveau (essai avec Seb d'abord, pas encore pour la famille) : les mods Switch qui changent des musiques de
+  Mario Kart 8 Deluxe marchent ensemble. Firehouse prépare UN fichier de musiques pour la version servie du jeu, avec
+  les musiques de tous tes mods allumés ; Frogtend le pose dans un dossier à part (« !Firehouse - musiques ») chez
+  Ryubing comme chez Eden, avant de lancer le jeu.
+- La taille (≈ 39 Mo) est annoncée avant le moindre téléchargement ; rien ne se télécharge sans ton oui (ou le réglage
+  « mettre à jour les mods tout seul »). Un bouton « 🎵 Préparer les musiques » sur la fiche quand il le faut.
+- Si ton émulateur n'utilise pas exactement la version du jeu servie, le jeu garde ses musiques d'origine et la fiche
+  dit pourquoi.
+- Deux mods qui changent la même musique : Frogtend demande lequel garder.
+- Tes parties sont mises à l'abri quand les musiques changent. Hors ligne, les musiques déjà posées restent si rien n'a
+  changé.
+
 ## 0.228.0 — ▶ Les jeux GOG se lancent directement, sans GOG Galaxy
 
 - Nouveau : « ▶ Jouer » sur un jeu GOG lance le jeu lui-même (comme LaunchBox), sans ouvrir GOG Galaxy ni le lanceur

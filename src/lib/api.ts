@@ -1093,6 +1093,20 @@ export interface ModSwitchVu {
   type: 'technique' | 'contenu' | 'cosmetique' | 'triche' | 'autre' | null;
   /** 1 à 5 (5 : utile à tous) ; la liste arrive triée du plus intéressant au moins intéressant. */
   interet: number | null;
+  /** Contrat 1.55 : les musiques du jeu que ce mod remplace (non vide : un mod « de musique », dont la musique vient du
+   * fichier de musique commun fabriqué par Firehouse). Jamais montrées telles quelles. */
+  amorces?: string[];
+}
+
+/** Contrat 1.55 : ce que la dernière partie a fait du fichier de musique commun (« !Firehouse - musiques »). */
+export interface MusiquesPosees {
+  /** Combien de mods de musique étaient actifs. */
+  actives: number;
+  /** Le fichier commun était en place pour cette partie. */
+  en_place: boolean;
+  /** Pourquoi il ne l'était pas (mots simples). */
+  raison: string | null;
+  fait?: string;
 }
 
 /** La liste des mods Switch d'un jeu. `etat` : ok | hors_ligne (`vue_le` : date de la dernière liste lue) | injoignable | rien. */
@@ -1106,7 +1120,18 @@ export interface ModsSwitch {
   remarque: string | null;
   /** Ce que la dernière pose dans un émulateur a dit (`quand` : secondes depuis 1970 ; une raison par mod pas posé ou
    * par souci), ou `null`. */
-  derniere_pose: { quand: string; emulateur: string; raisons: string[] } | null;
+  derniere_pose: { quand: string; emulateur: string; raisons: string[]; musiques?: MusiquesPosees | null } | null;
+  /** Contrat 1.55 : les musiques des mods de ce profil avant la partie (combien ; pourquoi elles ne seront pas posées si
+   * la version ne va pas ; la taille du dernier fichier de musique connu, pour l'accord). */
+  musiques?: {
+    actives: number;
+    raison: string | null;
+    taille_connue: number | null;
+    /** La dernière partie avait EXACTEMENT ces mods de musique : sa ligne vaut encore. */
+    meme_ensemble?: boolean;
+    /** Aucun oui noté pour ce choix et cette version : le bouton « 🎵 Préparer les musiques » se montre. */
+    a_preparer?: boolean;
+  } | null;
 }
 
 /** Où en sont les téléchargements de mods Switch d'un jeu. */
@@ -1532,14 +1557,22 @@ export const api = {
   modsSwitchLister: (id: number) => appeler<ModsSwitch>('mods_switch_lister', { id }),
   /** Après l'accord chiffré (ou « mettre à jour tout seul » : `auto`, réglage du profil `modsSwitch.auto`) : la liste
    * VUE (`clesVues`, `total` en octets) ; le cœur refuse (sorte « conflit ») si elle a changé. Rend combien. */
-  modsSwitchTelecharger: (id: number, clesVues: { cle: string; revision: number; taille: number; sha256: string }[], total: number, auto: boolean) =>
-    appeler<number>('mods_switch_telecharger', { id, clesVues, total, auto }),
+  /** `musiques` (contrat 1.55) : la taille des musiques ANNONCÉE dans l'accord — le cœur note alors le oui et les
+   * prépare ; absente, jamais. */
+  modsSwitchTelecharger: (id: number, clesVues: { cle: string; revision: number; taille: number; sha256: string }[], total: number, auto: boolean, musiques: number | null = null) =>
+    appeler<number>('mods_switch_telecharger', { id, clesVues, total, auto, musiques }),
   modsSwitchSuivi: (id: number) => appeler<SuiviModsSwitch>('mods_switch_suivi', { id }),
   /** Allume / éteint un mod pour toute la maison ; `eteindre` : l'autre mod en conflit, éteint d'un coup (après la
    * confirmation de la personne). Refus lisible (sorte « refus ») si un conflit n'est pas réglé. Rend vrai si changé. */
-  modsSwitchChoisir: (id: number, cle: string, allume: boolean, eteindre: string | null = null) =>
-    appeler<boolean>('mods_switch_choisir', { id, cle, allume, eteindre }),
+  modsSwitchChoisir: (id: number, cle: string, allume: boolean, eteindre: string | null = null, musiques: number | null = null) =>
+    appeler<boolean>('mods_switch_choisir', { id, cle, allume, eteindre, musiques }),
   modsSwitchRetirer: (id: number, cle: string) => appeler<void>('mods_switch_retirer', { id, cle }),
+  /** Contrat 1.55 : la taille du fichier de musique commun à ANNONCER quand on télécharge ou allume des mods de musique
+   * (`ajout` : leurs clés) — lue chez Firehouse (5 s au plus), sinon la dernière connue ; `null` : rien de connu. */
+  modsSwitchMusiquesTaille: (id: number, ajout: string[], eteindre: string | null = null) =>
+    appeler<number | null>('mods_switch_musiques_taille', { id, ajout, eteindre }),
+  /** « 🎵 Préparer les musiques » : la personne a dit oui en voyant `taille` ; le cœur note le oui et les prépare. */
+  modsSwitchMusiquesPreparer: (id: number, taille: number) => appeler<void>('mods_switch_musiques_preparer', { id, taille }),
   contenusInstaller: (id: number, choisis: string[]) =>
     appeler<{ installes: number; deja?: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
   /** Nexus Mods (lot 0.82.0) : la clé du profil (au coffre), les liens nxm:// reçus, l'installation après le oui. */

@@ -43,6 +43,18 @@ import {
   texteInterrupteurMod,
   titreTelechargement,
   totalOctets,
+  estMusique,
+  libellePreparer,
+  ligneAccordMusiques,
+  messagePreparer,
+  musiquesQuiServiront,
+  nMods,
+  preparerVisible,
+  titrePreparer,
+  ligneMusiques,
+  messageAllumageMusique,
+  plusMusiques,
+  titreAllumageMusique,
 } from './mods';
 
 /** Un mod de la forme de `mods_switch_lister` (mods_switch.rs, `ModVu`). */
@@ -342,5 +354,94 @@ describe('la fiche de chaque mod (contrat 1.46)', () => {
     expect(ligneSorte(mod({ interet: 2, type: 'cosmetique' }))).toBe('apparence');
     expect(ligneSorte(mod({ interet: 4, type: null }))).toBe('⭐ Recommandé');
     expect(ligneSorte(mod())).toBeNull();
+  });
+});
+
+describe('les musiques de Mario Kart 8 Deluxe (contrat 1.55)', () => {
+  const MO41 = 41018496;
+  const dk = mod({ cle: 'gamebanana-ee3c0683c3f6', nom: 'DK Summit', etat: 'telecharge', amorces: ['pBGM_GC_SHERBET_LAND_F', 'pBGM_GC_SHERBET_LAND_N'] });
+  const remix = mod({ cle: 'gamebanana-0123456789ab', nom: 'Sherbet remix', etat: 'telecharge', allume: true, amorces: ['pBGM_GC_SHERBET_LAND_F'] });
+  const autre = mod({ cle: 'gamebanana-00000000abcd', nom: 'Autre circuit', etat: 'telecharge', allume: true, amorces: ['pBGM_Y'] });
+
+  it('un mod de musique a des amorces ; deux mods qui changent la même musique ne s’allument pas ensemble', () => {
+    expect(estMusique(dk)).toBe(true);
+    expect(estMusique(mod())).toBe(false);
+    expect(estMusique(mod({ amorces: [] }))).toBe(false);
+    // Le chevauchement compte comme un conflit déclaré (même question : éteindre l'autre, ou renoncer).
+    expect(conflitAvec([dk, remix, autre], dk.cle)?.nom).toBe('Sherbet remix');
+    expect(conflitAvec([dk, { ...remix, allume: false }, autre], dk.cle)).toBeNull();
+    expect(conflitAvec([dk, autre], dk.cle)).toBeNull();
+    expect(conflitAvec([mod({ cle: 'x-1', etat: 'telecharge' }), remix], 'x-1')).toBeNull();
+    // Un mod de musique qui arrivera éteint (conflit avec un mod allumé) n'annonce pas de musiques.
+    const neuf = { ...dk, etat: 'pas_telecharge' as const };
+    expect(musiquesQuiServiront([neuf], [neuf, remix])).toEqual([]);
+    expect(musiquesQuiServiront([neuf], [neuf, autre]).map((m) => m.nom)).toEqual(['DK Summit']);
+    expect(nMods(1)).toBe('1 mod');
+    expect(nMods(2)).toBe('2 mods');
+  });
+
+  it('l’accord annonce « + 41 Mo de musiques », « environ » si des mods sont décochés, sans chiffre inventé sinon', () => {
+    expect(plusMusiques(MO41)).toBe(`+ ${MO41} o de musiques`);
+    expect(plusMusiques(MO41, true)).toBe(`+ environ ${MO41} o de musiques`);
+    expect(plusMusiques(null)).toBe('+ des musiques, taille pas encore connue');
+    expect(titreTelechargement([dk], null, false, { octets: MO41 })).toBe(`🧩 Télécharger « DK Summit » (1000 o + ${MO41} o de musiques) ?`);
+    expect(titreTelechargement([dk], 1000, false, { octets: MO41 })).toContain(`environ ${Math.round((1000 + MO41) / 1000)} s`);
+    // Rien à annoncer (mod sans musique, ou qui arrivera éteint) : rien d'annoncé.
+    expect(titreTelechargement([mod()], null, false, { octets: MO41 })).toBe('🧩 Télécharger « 1080p » (1000 o) ?');
+    expect(titreTelechargement([dk], null, false, null)).toBe('🧩 Télécharger « DK Summit » (1000 o) ?');
+    const m = messageTelechargement([dk], false, { octets: MO41 });
+    expect(m).toContain(`🎵 + ${MO41} o de musiques`);
+    expect(m).toContain('les musiques des mods, préparées par Firehouse');
+    expect(m).not.toContain('fichier de musique commun');
+    expect(messageTelechargement([dk], false, null)).not.toContain('🎵');
+    expect(messageTelechargement([dk], false, { octets: null })).toContain('les musiques seront demandées à la prochaine partie');
+    expect(ligneAccordMusiques([mod()], { octets: MO41 })).toBeNull();
+    expect(titreTelechargement([dk], null, true, { octets: MO41 })).toContain('Mettre à jour « DK Summit »');
+    expect(titreAllumageMusique(dk, MO41)).toBe(`🎵 Allumer « DK Summit » (+ ${MO41} o de musiques) ?`);
+    expect(titreAllumageMusique(dk, null)).toBe('🎵 Allumer « DK Summit » (+ des musiques, taille pas encore connue) ?');
+    expect(messageAllumageMusique(dk, MO41)).toContain('version exacte du jeu');
+    expect(messageAllumageMusique(dk, null)).toContain('les musiques seront demandées à la prochaine partie');
+    expect(messageAllumageMusique(dk, MO41, remix)).toContain('« DK Summit » et « Sherbet remix » changent la même musique du jeu : allumer « DK Summit » éteint « Sherbet remix »');
+    expect(libellePreparer(MO41)).toBe(`🎵 Préparer les musiques (≈ ${MO41} o)`);
+    expect(libellePreparer(null)).toBe('🎵 Préparer les musiques');
+  });
+
+  const fiche = (x: Partial<ModsSwitch>): ModsSwitch => ({
+    etat: 'ok',
+    vue_le: null,
+    tid_base: '0100152000022000',
+    version_servie: { version: 1179648, version_affichee: '3.0.1', build_id: null },
+    version_connue: true,
+    mods: [dk],
+    remarque: null,
+    derniere_pose: null,
+    ...x,
+  });
+  const posee = { quand: '1', emulateur: 'Ryubing', raisons: [], musiques: { actives: 1, en_place: true, raison: null } };
+
+  it('la ligne de la fiche compare le CHOIX de mods de la dernière partie, pas seulement leur nombre', () => {
+    const avant = (x: object) => ({ actives: 1, raison: null, taille_connue: MO41, meme_ensemble: true, a_preparer: false, ...x });
+    expect(ligneMusiques(fiche({ musiques: avant({}), derniere_pose: posee }))).toBe('🎵 Les musiques de 1 mod sont en place (préparées par Firehouse).');
+    // Même nombre, autre choix : la dernière partie ne vaut plus.
+    expect(ligneMusiques(fiche({ musiques: avant({ meme_ensemble: false }), derniere_pose: posee }))).toBe('🎵 Musiques de 1 mod : elles seront mises en place à la prochaine partie.');
+    expect(ligneMusiques(fiche({ musiques: avant({ actives: 2, meme_ensemble: false }), derniere_pose: posee }))).toBe('🎵 Musiques de 2 mods : elles seront mises en place à la prochaine partie.');
+    const r = 'musiques des mods faites pour la version 3.0.1 ; ce jeu utilise la version d’origine (sans mise à jour) : le jeu garde ses musiques d’origine';
+    expect(ligneMusiques(fiche({ musiques: avant({ raison: r }), derniere_pose: posee }))).toBe(`🎵 M${r.slice(1)}.`);
+    const ratee = { ...posee, musiques: { actives: 1, en_place: false, raison: 'Firehouse ne répond pas : le jeu garde ses musiques d’origine' } };
+    expect(ligneMusiques(fiche({ musiques: avant({}), derniere_pose: ratee }))).toBe('🎵 Firehouse ne répond pas : le jeu garde ses musiques d’origine.');
+    // À préparer : dit, et le bouton se montre (seulement si Firehouse répond).
+    const aPreparer = fiche({ musiques: avant({ meme_ensemble: false, a_preparer: true }), derniere_pose: ratee });
+    expect(ligneMusiques(aPreparer)).toBe('🎵 Musiques de 1 mod à préparer : elles ne se téléchargent jamais sans ton accord.');
+    expect(preparerVisible(aPreparer)).toBe(true);
+    expect(preparerVisible({ ...aPreparer, etat: 'hors_ligne' })).toBe(false);
+    expect(preparerVisible(fiche({ musiques: avant({}) }))).toBe(false);
+    // Aucun mod de musique allumé : rien à dire.
+    expect(ligneMusiques(fiche({ musiques: avant({ actives: 0 }), derniere_pose: posee }))).toBeNull();
+    expect(ligneMusiques(fiche({}))).toBeNull();
+    expect(ligneMusiques(null)).toBeNull();
+    // La ligne suffit à montrer le bloc.
+    expect(blocModsVisible(fiche({ mods: [], musiques: avant({ raison: r }) }))).toBe(true);
+    expect(messagePreparer(aPreparer)).toContain('1 mod de musique');
+    expect(titrePreparer(MO41)).toBe(`🎵 Préparer les musiques des mods (${MO41} o) ?`);
   });
 });

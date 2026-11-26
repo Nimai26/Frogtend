@@ -699,6 +699,8 @@ pub fn run() {
             commandes::mods_switch_telecharger,
             commandes::mods_switch_suivi,
             commandes::mods_switch_choisir,
+            commandes::mods_switch_musiques_taille,
+            commandes::mods_switch_musiques_preparer,
             commandes::mods_switch_retirer,
             commandes::contenus_switch_noms,
             commandes::contenus_installer,

@@ -1989,12 +1989,17 @@ pub async fn mods_switch_lister(app: AppHandle, noyau: State<'_, Noyau>, id: i64
         noyau.journaliser(&format!("mods Switch du jeu {id} : {} mod(s) de Firehouse écarté(s) (clé hors contrat ou en double)", lecture.liste.ecartes));
     }
     let (stock, liste, frais) = (cx.stock.clone(), lecture.liste.clone(), lecture.etat == "ok");
-    let (rangs, derniere) = tauri::async_runtime::spawn_blocking(move || {
-        // Le dernier avis de Firehouse sur une révision rangée (compatibilité, conflits…) : retenu pour la pose.
+    let (donnees, base, utilisee) = (noyau.dossier.clone(), cx.base, cx.utilisee);
+    let auto = crate::mods_switch::auto_du_profil(&noyau.dossier, &s.profil.id);
+    let (rangs, derniere, musiques) = tauri::async_runtime::spawn_blocking(move || {
+        // Le dernier avis de Firehouse sur une révision rangée (compatibilité, conflits, amorces…) : retenu pour la pose.
         if frais {
             crate::mods_switch::rafraichir(&stock, &liste);
         }
-        (crate::mods_switch::ranges(&stock), crate::mods_switch::derniere_pose(&stock))
+        let derniere = crate::mods_switch::derniere_pose(&stock);
+        // Comparée à l'ensemble de la dernière partie AVANT `pour_le_profil` (qui retire tout ce qui nomme un mod).
+        let musiques = crate::mods_switch::apercu_musiques(&donnees, &stock, base, utilisee, Some(&liste), derniere.as_ref(), auto);
+        (crate::mods_switch::ranges(&stock), derniere, musiques)
     })
     .await
     .unwrap_or_default();
@@ -2002,6 +2007,7 @@ pub async fn mods_switch_lister(app: AppHandle, noyau: State<'_, Noyau>, id: i64
     let mut vue = crate::mods_switch::liste_vue(&lecture, &rangs, &choix, cx.utilisee, cx.base);
     // Les raisons qui nomment un mod réservé : seulement si CE profil le voit.
     vue.derniere_pose = derniere.map(|d| d.pour_le_profil(Some(&lecture.liste)));
+    vue.musiques = musiques;
     Ok(vue)
 }
 
@@ -2051,7 +2057,7 @@ pub fn mods_accordes(servis: &[crate::mods_switch::ModServi], vus: &[ModAccorde]
 /// `mods_switch_suivi`) ; un seul téléchargement par jeu, tous profils confondus (le rangement est commun). Jamais
 /// pendant une partie. Rend combien.
 #[tauri::command]
-pub async fn mods_switch_telecharger(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cles_vues: Vec<ModAccorde>, total: u64, auto: bool) -> Resultat<usize> {
+pub async fn mods_switch_telecharger(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cles_vues: Vec<ModAccorde>, total: u64, auto: bool, musiques: Option<u64>) -> Resultat<usize> {
     profil_ouvert(&noyau).await?;
     mods_switch_permis(&app, &noyau)?;
     let cx = contexte_mods_switch(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est téléchargé.".into()))?;
@@ -2079,6 +2085,7 @@ pub async fn mods_switch_telecharger(app: AppHandle, noyau: State<'_, Noyau>, id
     let app2 = app.clone();
     let servie = lecture.liste.version_servie.clone();
     let (base, stock) = (cx.base, cx.stock.clone());
+    let musique = a_faire.iter().any(|m| m.musique());
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();
         let travail = app2.state::<crate::mods_switch::Travail>();
@@ -2133,8 +2140,105 @@ pub async fn mods_switch_telecharger(app: AppHandle, noyau: State<'_, Noyau>, id
             x.actif = false;
             x.en_cours = None;
         });
+        // Contrat 1.55 : un mod de musique arrivé, et la personne a dit oui en voyant la taille des musiques : le oui est
+        // noté, et les musiques préparées dans le cache. Sans taille annoncée : rien (le bouton de la fiche servira).
+        if let (true, Some(t)) = (musique && travail.suivi(id).faits > 0, musiques) {
+            if let Err(e) = accorder_musiques(&app2, &noyau, id, t).await {
+                noyau.journaliser(&format!("mods Switch du jeu {id} : accord des musiques pas noté ({})", sorte_erreur(&e)));
+            }
+        }
     });
     Ok(n)
+}
+
+/// La SORTE d'une erreur (« reseau », « conflit »…), sans son texte : pour un journal commun à la maison, quand le texte
+/// de Firehouse pourrait nommer un mod.
+fn sorte_erreur(e: &Erreur) -> String {
+    serde_json::to_value(e).ok().and_then(|v| v["sorte"].as_str().map(String::from)).unwrap_or_default()
+}
+
+/// Contrat 1.55 (✅ Seb 26/11 : les 41 Mo jamais sans un oui) : la personne a dit OUI en voyant la taille des musiques
+/// (`taille`) — allumage ou téléchargement d'un mod de musique, ou « 🎵 Préparer les musiques ». Le oui est NOTÉ pour
+/// l'ensemble actif et la version servie (`<stock>\.musiques\accord.json`), puis les musiques sont préparées dans le
+/// cache en arrière-plan, HORS PARTIE. Le journal ne dit que des nombres (et rien quand un mod réservé en est).
+async fn accorder_musiques(app: &AppHandle, noyau: &Noyau, id: i64, taille: u64) -> Resultat<()> {
+    mods_switch_permis(app, noyau)?;
+    let cx = contexte_mods_switch(app, noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est préparé.".into()))?;
+    let s = noyau.session().await?;
+    let (d, st, se, base, u) = (noyau.dossier.clone(), cx.stock.clone(), s.dossier.clone(), cx.base, cx.utilisee);
+    let (ensemble, a_taire, servie) = tauri::async_runtime::spawn_blocking(move || {
+        let l = crate::mods_switch::liste_du_profil(&se, base);
+        crate::mods_switch::ensemble_du_profil(&d, &st, base, u, l.as_ref())
+    })
+    .await
+    .unwrap_or_default();
+    if ensemble.is_empty() {
+        return Ok(());
+    }
+    let (st, e2, v) = (cx.stock.clone(), ensemble.clone(), servie.as_ref().and_then(|x| x.version));
+    tauri::async_runtime::spawn_blocking(move || crate::mods_switch::noter_accord_musiques(&st, &e2, v, Some(taille)))
+        .await
+        .map_err(|_| Erreur::Disque("L'enregistrement s'est arrêté brutalement.".into()))??;
+    let combien = if a_taire.is_empty() { format!("{} mod(s)", ensemble.len()) } else { "des mods".to_string() };
+    noyau.journaliser(&format!("mods Switch du jeu {id} : musiques accordées par la personne pour {combien} ({taille} octets annoncés)"));
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let noyau = app.state::<Noyau>();
+        if mods_switch_permis(&app, &noyau).is_err() {
+            return;
+        }
+        match crate::mods_switch::precharger_musiques(&s.source, &cx.stock, cx.base, &ensemble, cx.utilisee, servie.as_ref()).await {
+            Ok(Some(n)) => noyau.journaliser(&format!("mods Switch du jeu {id} : musiques de {combien} prêtes dans le cache ({n} octets)")),
+            Ok(None) => {}
+            // Jamais le texte de Firehouse (il pourrait nommer un mod) : la sorte seulement.
+            Err(e) => noyau.journaliser(&format!("mods Switch du jeu {id} : musiques pas préparées ({}) : elles le seront au lancement", sorte_erreur(&e))),
+        }
+    });
+    Ok(())
+}
+
+/// « 🎵 Préparer les musiques (≈ N Mo) » (bureau et canapé) : la personne a dit oui en voyant la taille (`taille`). Le
+/// oui est noté, les musiques préparées en arrière-plan. Refusé pendant une partie.
+#[tauri::command]
+pub async fn mods_switch_musiques_preparer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, taille: u64) -> Resultat<()> {
+    profil_ouvert(&noyau).await?;
+    if taille == 0 {
+        return Err(Erreur::Refus("La taille des musiques n'est pas connue : rien n'est préparé.".into()));
+    }
+    accorder_musiques(&app, &noyau, id, taille).await
+}
+
+/// Contrat 1.55 : la taille du fichier de musique commun à ANNONCER dans l'accord (« + 41 Mo de musiques ») quand la
+/// personne télécharge ou allume un mod de musique (`ajout` : leurs clés), lue par un HEAD de 5 s sur l'ensemble qui
+/// sera actif ; à défaut, la taille du dernier fichier connu de ce jeu. `None` : rien de connu (ou pas de musique).
+#[tauri::command]
+pub async fn mods_switch_musiques_taille(app: AppHandle, noyau: State<'_, Noyau>, id: i64, ajout: Vec<String>, eteindre: Option<String>) -> Resultat<Option<u64>> {
+    profil_ouvert(&noyau).await?;
+    let Some(cx) = contexte_mods_switch(&app, &noyau, id).await? else { return Ok(None) };
+    let s = noyau.session().await?;
+    let (d, st, se, base, u) = (noyau.dossier.clone(), cx.stock.clone(), s.dossier.clone(), cx.base, cx.utilisee);
+    let ensemble = tauri::async_runtime::spawn_blocking(move || {
+        let l = crate::mods_switch::liste_du_profil(&se, base);
+        let (mut e, _, _) = crate::mods_switch::ensemble_du_profil(&d, &st, base, u, l.as_ref());
+        // Les mods ajoutés : seulement des mods de musique que CE profil voit (sa liste, ou rangés et visibles pour lui).
+        let rangs = crate::mods_switch::visibles(crate::mods_switch::ranges(&st), l.as_ref());
+        for c in ajout {
+            let servi = l.as_ref().and_then(|l| l.mods.iter().find(|m| m.cle == c && m.musique()).map(|m| m.revision));
+            let range = rangs.iter().find(|m| m.cle == c && m.musique()).map(|m| m.revision);
+            if let Some(r) = servi.or(range) {
+                if !e.iter().any(|(x, _)| *x == c) {
+                    e.push((c, r));
+                }
+            }
+        }
+        // Le mod que la personne éteint en même temps (conflit) n'en fait plus partie.
+        e.retain(|(x, _)| Some(x) != eteindre.as_ref());
+        e.sort();
+        e
+    })
+    .await
+    .unwrap_or_default();
+    Ok(crate::mods_switch::taille_musiques(Some(&s.source), &cx.stock, cx.base, &ensemble).await)
 }
 
 /// Où en sont les téléchargements de mods de ce jeu (rien n'est demandé à Firehouse ; le même pour tous les profils).
@@ -2149,7 +2253,7 @@ pub async fn mods_switch_suivi(app: AppHandle, noyau: State<'_, Noyau>, id: i64)
 /// les deux changent alors d'un coup. Refusé pendant une partie ou un émulateur ouvert seul. Rend vrai si quelque
 /// chose a changé (les parties de ce jeu seront mises à l'abri avant sa prochaine partie).
 #[tauri::command]
-pub async fn mods_switch_choisir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cle: String, allume: bool, eteindre: Option<String>) -> Resultat<bool> {
+pub async fn mods_switch_choisir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cle: String, allume: bool, eteindre: Option<String>, musiques: Option<u64>) -> Resultat<bool> {
     profil_ouvert(&noyau).await?;
     mods_switch_permis(&app, &noyau)?;
     let cx = contexte_mods_switch(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est changé.".into()))?;
@@ -2193,6 +2297,13 @@ pub async fn mods_switch_choisir(app: AppHandle, noyau: State<'_, Noyau>, id: i6
         .await
         .map_err(|_| Erreur::Disque("L'enregistrement s'est arrêté brutalement.".into()))??;
     let _ = nom_a;
+    // Contrat 1.55 : un mod de MUSIQUE ALLUMÉ, et la personne a dit oui en voyant la taille des musiques : le oui est
+    // noté, les musiques préparées hors partie. Une extinction ne crée jamais d'accord ni de téléchargement.
+    if let (true, Some(t)) = (change && allume && rangs.iter().any(|m| m.cle == cle && m.musique()), musiques) {
+        if let Err(e) = accorder_musiques(&app, &noyau, id, t).await {
+            noyau.journaliser(&format!("mods Switch du jeu {id} : accord des musiques pas noté ({})", sorte_erreur(&e)));
+        }
+    }
     noyau.journaliser(&format!(
         "mods Switch du jeu {id} : « {} » {}{}{}",
         nom_journal(&cle).unwrap_or_default(),
@@ -2288,23 +2399,60 @@ async fn poser_mods_switch(noyau: &Noyau, id: i64, pour: ModsPour, base: u64, ut
     let donnees = noyau.dossier.clone();
     // La dernière liste reçue par le profil QUI LANCE (son cache) : un mod réservé qu'elle ne contient pas n'est ni
     // posé ni nommé (brief § 2). Sans session : aucune liste, aucun mod réservé.
-    let session = noyau.session().await.ok().map(|s| s.dossier.clone());
+    let session_active = noyau.session().await.ok();
+    let session = session_active.as_ref().map(|s| s.dossier.clone());
     let liste = session.as_deref().and_then(|d| crate::mods_switch::liste_du_profil(d, base));
+    // Contrat 1.55 : les musiques sont décidées AVANT la pose (HEAD de 5 s, cache, téléchargement si permis), sans rien
+    // écrire chez l'émulateur ; la pose les applique après les mods (parties à l'abri d'abord).
+    let dossier_musiques = match &pour {
+        ModsPour::Ryubing { racine, .. } => Some(crate::mods_switch::dossier_mods_ryubing(racine, base)),
+        ModsPour::Eden { dossier } => crate::mods_switch::dossier_mods_eden(dossier, base),
+    };
+    // L'émulateur ouvert : la pose ne changera rien, les musiques non plus (rien n'est demandé à Firehouse).
+    let ouvert = {
+        let d = match &pour {
+            ModsPour::Ryubing { dossier, .. } | ModsPour::Eden { dossier } => dossier.clone(),
+        };
+        tauri::async_runtime::spawn_blocking(move || !crate::lancement::processus_du_dossier(&d).is_empty()).await.unwrap_or(true)
+    };
+    let musiques = match dossier_musiques {
+        Some(_) if ouvert => crate::mods_switch::DecisionMusiques::ignorer(),
+        Some(dj) => {
+            let (d2, s2, l2) = (donnees.clone(), stock.clone(), liste.clone());
+            let (ensemble, a_taire, servie) =
+                tauri::async_runtime::spawn_blocking(move || crate::mods_switch::ensemble_du_profil(&d2, &s2, base, utilisee, l2.as_ref())).await.unwrap_or_default();
+            let auto = session_active.as_ref().is_some_and(|s| crate::mods_switch::auto_du_profil(&donnees, &s.profil.id));
+            crate::mods_switch::resoudre_musiques(crate::mods_switch::DemandeMusiques {
+                source: session_active.as_deref().map(|s| &s.source),
+                stock: &stock,
+                dossier_jeu: &dj,
+                base,
+                ensemble,
+                a_taire,
+                utilisee,
+                servie,
+                auto,
+                budget: crate::mods_switch::BUDGET_MUSIQUES_LANCEMENT,
+            })
+            .await
+        }
+        None => crate::mods_switch::DecisionMusiques::ignorer(),
+    };
     let (nom, r) = match pour {
         ModsPour::Ryubing { dossier, racine } => {
-            let (s, l) = (stock.clone(), liste.clone());
+            let (s, l, mu) = (stock.clone(), liste.clone(), musiques.clone());
             let r = tauri::async_runtime::spawn_blocking(move || {
-                let r = crate::mods_switch::poser_ryubing_pour(&donnees, &dossier, &racine, base, &s, utilisee, l.as_ref());
+                let r = crate::mods_switch::poser_ryubing_avec(&donnees, &dossier, &racine, base, &s, utilisee, l.as_ref(), &mu);
                 (r, crate::mods_switch::verifier_masques_ryubing(&racine, base, &s, l.as_ref()))
             })
             .await;
             ("Ryubing", r)
         }
         ModsPour::Eden { dossier } => {
-            let (s, l) = (stock.clone(), liste.clone());
+            let (s, l, mu) = (stock.clone(), liste.clone(), musiques.clone());
             let r = tauri::async_runtime::spawn_blocking(move || {
-                let ouvert = !crate::lancement::processus_du_dossier(&dossier).is_empty();
-                let r = crate::mods_switch::poser_eden_pour(&donnees, &dossier, base, &s, utilisee, ouvert, l.as_ref());
+                let ouvert = ouvert || !crate::lancement::processus_du_dossier(&dossier).is_empty();
+                let r = crate::mods_switch::poser_eden_avec(&donnees, &dossier, base, &s, utilisee, ouvert, l.as_ref(), &mu);
                 (r, crate::mods_switch::verifier_masques_eden(&dossier, base, &s, l.as_ref()))
             })
             .await;
@@ -2320,7 +2468,13 @@ async fn poser_mods_switch(noyau: &Noyau, id: i64, pour: ModsPour, base: u64, ut
     };
     match r {
         Ok(b) if b == crate::mods_switch::BilanMods::default() => {}
-        Ok(b) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} : {}", b.resume())),
+        Ok(b) => {
+            noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} : {}", b.resume()));
+            // Des nombres et un sha tronqué : jamais une clé ni une amorce (le journal est commun à la maison).
+            if let Some(l) = crate::mods_switch::ligne_journal_musiques(&musiques, &b) {
+                noyau.journaliser(&format!("{nom} : musiques Switch du jeu {id} : {l}"));
+            }
+        }
         Err(e) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} non posés ({e})")),
     }
     if let Some(m) = refus {

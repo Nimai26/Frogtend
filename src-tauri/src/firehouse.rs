@@ -92,6 +92,13 @@ pub struct Brute {
     /// Contrat 1.52 (lot S5) : `X-Modifie` (ISO 8601 UTC) d'un fichier COMPLET de la sauvegarde — le moment où il a été
     /// rangé chez Firehouse. Absent avant la 1.52, ou pour un fichier pas complet.
     pub modifie: Option<String>,
+    /// L'en-tête `Content-Length` lu tel quel (aussi pour un `HEAD`, qui n'a pas de corps) : la taille du fichier.
+    pub taille: Option<u64>,
+    /// Contrat 1.55 (`bgm-bars`) : `X-Version-Jeu`, la version brute du jeu pour laquelle le fichier est fabriqué.
+    pub version_jeu: Option<u64>,
+    /// Contrat 1.55 (Firehouse 3.351.0) : `X-Code` d'une erreur (`conflit`, `original_absent`, `introuvable`), en HEAD
+    /// comme en GET.
+    pub code: Option<String>,
     pub octets: Vec<u8>,
 }
 
@@ -381,6 +388,9 @@ impl Client {
         let complet = rep.headers().get("x-complet").and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim() == "1");
         let sha256 = rep.headers().get("x-sha256").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_ascii_lowercase());
         let modifie = rep.headers().get("x-modifie").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let taille = rep.headers().get(reqwest::header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok());
+        let version_jeu = rep.headers().get("x-version-jeu").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok());
+        let code = rep.headers().get("x-code").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_ascii_lowercase()).filter(|v| !v.is_empty());
         let gzip = rep.headers().get(reqwest::header::CONTENT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim().eq_ignore_ascii_case("gzip"));
         let octets = rep.bytes().await.map_err(Self::erreur_reseau)?.to_vec();
         // Relevé réel du 24/11 : Firehouse compresse ses grosses réponses JSON (manifeste, liste des sauvegardes) même
@@ -397,7 +407,7 @@ impl Client {
         } else {
             octets
         };
-        Ok(Brute { statut, recu, complet, sha256, modifie, octets })
+        Ok(Brute { statut, recu, complet, sha256, modifie, taille, version_jeu, code, octets })
     }
 
     /// Envoie `e.source` par morceaux à partir de `e.depart` ; rend les octets envoyés et la dernière réponse (celle qui

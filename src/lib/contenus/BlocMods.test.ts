@@ -53,6 +53,8 @@ const suivre = vi.fn(async (..._a: unknown[]) => structuredClone(suiviReponse));
 const telecharger = vi.fn(async (..._a: unknown[]) => 1);
 const choisirMod = vi.fn(async (..._a: unknown[]): Promise<boolean> => true);
 const retirer = vi.fn(async (..._a: unknown[]) => {});
+const tailleMusiques = vi.fn(async (..._a: unknown[]): Promise<number | null> => 41018496);
+const preparerMusiques = vi.fn(async (..._a: unknown[]) => {});
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${o} o`,
   duree: (s: number) => `${Math.round(s)} s`,
@@ -63,6 +65,8 @@ vi.mock('$lib/api', () => ({
     modsSwitchTelecharger: (...a: unknown[]) => telecharger(...a),
     modsSwitchChoisir: (...a: unknown[]) => choisirMod(...a),
     modsSwitchRetirer: (...a: unknown[]) => retirer(...a),
+    modsSwitchMusiquesTaille: (...a: unknown[]) => tailleMusiques(...a),
+    modsSwitchMusiquesPreparer: (...a: unknown[]) => preparerMusiques(...a),
   },
 }));
 const confirmer = vi.fn(async (..._a: unknown[]) => true);
@@ -119,7 +123,8 @@ beforeEach(() => {
   debit = null;
   partie.enJeu = null;
   seul.ouvert = null;
-  for (const f of [lister, suivre, telecharger, choisirMod, retirer, confirmer, cocher, choisirDialogue, toast, reglerProfil]) f.mockClear();
+  for (const f of [lister, suivre, telecharger, choisirMod, retirer, confirmer, cocher, choisirDialogue, toast, reglerProfil, tailleMusiques, preparerMusiques]) f.mockClear();
+  tailleMusiques.mockImplementation(async () => 41018496);
   lister.mockImplementation(async () => structuredClone(reponse));
   suivre.mockImplementation(async () => structuredClone(suiviReponse));
   telecharger.mockImplementation(async () => 1);
@@ -205,7 +210,7 @@ describe('le bloc des mods Switch', () => {
     await attendre();
     const o = cocher.mock.calls[0][2] as { coches: boolean[]; resume: (v: string[]) => string };
     expect(o.coches).toEqual([true, true]);
-    expect(o.resume(['a-000000000001', 'b-000000000001'])).toBe('2 mod(s), 15 o');
+    expect(o.resume(['a-000000000001', 'b-000000000001'])).toBe('2 mods, 15 o');
     expect(telecharger).toHaveBeenCalledWith(7, [{ cle: 'b-000000000001', revision: 1, taille: 5, sha256: SHA }], 5, false);
   });
 
@@ -297,7 +302,7 @@ describe('le bloc des mods Switch', () => {
     await attendre();
     expect(telecharger).toHaveBeenCalledTimes(1);
     expect(telecharger).toHaveBeenCalledWith(7, [{ cle: 'wollnashorn-000000000001', revision: 2, taille: 1000, sha256: SHA }], 1000, true);
-    expect(toast).toHaveBeenCalledWith(expect.stringContaining('se mettent à jour tout seuls'));
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('1 mod de « Zelda » se met à jour tout seul'));
     expect(choisirDialogue).not.toHaveBeenCalled();
   });
 
@@ -521,5 +526,161 @@ describe('le bloc des mods Switch', () => {
     reponse = liste([mod({ etat: 'telecharge', revision_rangee: 1 })]);
     await ouvrir({ deplie: true });
     expect(screen.getByRole('switch')).toBeTruthy();
+  });
+});
+
+describe('les musiques de Mario Kart 8 Deluxe (contrat 1.55)', () => {
+  const DK = 'gamebanana-ee3c0683c3f6';
+  const REMIX = 'gamebanana-0123456789ab';
+  const dk = (x: Mod = {}) => mod({ cle: DK, nom: 'DK Summit', amorces: ['pBGM_GC_SHERBET_LAND_F', 'pBGM_GC_SHERBET_LAND_N'], ...x });
+
+  it('télécharger un mod de musique : l’accord annonce aussi « + 41 Mo de musiques », la taille va au cœur', async () => {
+    reponse = liste([dk()]);
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('button', { name: '⬇ Télécharger (1000 o)' }));
+    await attendre();
+    expect(tailleMusiques).toHaveBeenCalledWith(7, [DK], null);
+    const [titre, o] = confirmer.mock.calls[0] as [string, { message: string }];
+    expect(titre).toBe('🧩 Télécharger « DK Summit » (1000 o + 41018496 o de musiques) ?');
+    expect(o.message).toContain('🎵 + 41018496 o de musiques');
+    expect(telecharger).toHaveBeenCalledWith(7, [{ cle: DK, revision: 1, taille: 1000, sha256: SHA }], 1000, false, 41018496);
+  });
+
+  it('un mod de musique qui arrivera éteint (conflit avec un mod allumé) n’annonce pas de musiques', async () => {
+    reponse = liste([dk(), mod({ cle: REMIX, nom: 'Sherbet remix', etat: 'telecharge', revision_rangee: 1, allume: true, amorces: ['pBGM_GC_SHERBET_LAND_N'] })]);
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('button', { name: '⬇ Télécharger (1000 o)' }));
+    await attendre();
+    expect(tailleMusiques).not.toHaveBeenCalled();
+    expect(confirmer.mock.calls[0][0]).toBe('🧩 Télécharger « DK Summit » (1000 o) ?');
+    expect(telecharger).toHaveBeenCalledWith(7, [{ cle: DK, revision: 1, taille: 1000, sha256: SHA }], 1000, false);
+  });
+
+  it('Firehouse muet : la taille du dernier fichier connu est annoncée ; hors ligne, sans rien demander', async () => {
+    tailleMusiques.mockImplementation(async () => Promise.reject({ sorte: 'reseau', motif: 'x' }));
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1 })], { musiques: { actives: 0, raison: null, taille_connue: 40000000 } });
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    expect(confirmer.mock.calls[0][0]).toContain('+ 40000000 o de musiques');
+    cleanup();
+    tailleMusiques.mockClear();
+    confirmer.mockClear();
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1 })], { etat: 'hors_ligne', musiques: { actives: 0, raison: null, taille_connue: 40000000 } });
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    expect(tailleMusiques).not.toHaveBeenCalled();
+    expect(confirmer.mock.calls[0][0]).toContain('+ 40000000 o de musiques');
+  });
+
+  it('pendant que la taille est demandée : « ⏳ Je regarde la taille des musiques… » est dit', async () => {
+    let finir: (n: number) => void = () => {};
+    tailleMusiques.mockImplementation(() => new Promise<number>((r) => (finir = r)));
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1 })]);
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    expect(screen.getByText('⏳ Je regarde la taille des musiques…')).toBeTruthy();
+    finir(41018496);
+    await attendre();
+    expect(screen.queryByText('⏳ Je regarde la taille des musiques…')).toBeNull();
+  });
+
+  it('allumer un mod de musique : l’accord dit la taille ; un « non » ne change rien ; un oui donne la taille au cœur', async () => {
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1 })]);
+    await ouvrir();
+    confirmer.mockImplementation(async () => false);
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    expect(confirmer.mock.calls[0][0]).toBe('🎵 Allumer « DK Summit » (+ 41018496 o de musiques) ?');
+    expect(choisirMod).not.toHaveBeenCalled();
+    confirmer.mockImplementation(async () => true);
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    expect(choisirMod).toHaveBeenCalledWith(7, DK, true, null, 41018496);
+  });
+
+  it('sans taille connue : allumé, mais rien n’est accordé ni préchargé (c’est dit)', async () => {
+    tailleMusiques.mockImplementation(async () => null);
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1 })]);
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    const [titre, o] = confirmer.mock.calls[0] as [string, { message: string }];
+    expect(titre).toContain('+ des musiques, taille pas encore connue');
+    expect(o.message).toContain('les musiques seront demandées à la prochaine partie');
+    expect(choisirMod).toHaveBeenCalledWith(7, DK, true, null);
+  });
+
+  it('deux mods de musique qui changent la même musique : UNE fenêtre (éteindre l’autre + la taille)', async () => {
+    reponse = liste([
+      dk({ etat: 'telecharge', revision_rangee: 1 }),
+      mod({ cle: REMIX, nom: 'Sherbet remix', etat: 'telecharge', revision_rangee: 1, allume: true, amorces: ['pBGM_GC_SHERBET_LAND_N'] }),
+    ]);
+    await ouvrir();
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    expect(confirmer).toHaveBeenCalledTimes(1);
+    const [titre, o] = confirmer.mock.calls[0] as [string, { message: string }];
+    expect(titre).toBe('🎵 Allumer « DK Summit » (+ 41018496 o de musiques) ?');
+    expect(o.message).toContain('« DK Summit » et « Sherbet remix » changent la même musique du jeu');
+    // La taille est demandée SANS le mod qui s'éteint.
+    expect(tailleMusiques).toHaveBeenCalledWith(7, [DK], REMIX);
+    expect(choisirMod).toHaveBeenCalledWith(7, DK, true, REMIX, 41018496);
+    // Renoncer : rien ne change.
+    choisirMod.mockClear();
+    confirmer.mockImplementation(async () => false);
+    await fireEvent.click(screen.getByRole('switch', { name: 'DK Summit' }));
+    await attendre();
+    expect(choisirMod).not.toHaveBeenCalled();
+  });
+
+  it('la fiche dit simplement où en sont les musiques, au bureau comme au canapé', async () => {
+    const pose = { quand: '1', emulateur: 'Ryubing', raisons: [], musiques: { actives: 1, en_place: true, raison: null } };
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1, allume: true })], {
+      musiques: { actives: 1, raison: null, taille_connue: 41018496, meme_ensemble: true, a_preparer: false },
+      derniere_pose: pose,
+    });
+    await ouvrir();
+    expect(screen.getByText('🎵 Les musiques de 1 mod sont en place (préparées par Firehouse).')).toBeTruthy();
+    cleanup();
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1, allume: true })], {
+      musiques: { actives: 1, raison: 'musiques des mods faites pour la version 3.0.1 ; ce jeu utilise une autre mise à jour : le jeu garde ses musiques d’origine', taille_connue: null },
+      derniere_pose: pose,
+    });
+    await ouvrir({ deplie: true });
+    expect(screen.getByText('🎵 Musiques des mods faites pour la version 3.0.1 ; ce jeu utilise une autre mise à jour : le jeu garde ses musiques d’origine.')).toBeTruthy();
+  });
+
+  it('« 🎵 Préparer les musiques » : la taille, l’accord, puis le cœur ; un « non » ne prépare rien', async () => {
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1, allume: true })], {
+      musiques: { actives: 1, raison: null, taille_connue: 41018496, meme_ensemble: false, a_preparer: true },
+    });
+    await ouvrir({ deplie: true });
+    expect(screen.getByText('🎵 Musiques de 1 mod à préparer : elles ne se téléchargent jamais sans ton accord.')).toBeTruthy();
+    confirmer.mockImplementation(async () => false);
+    await fireEvent.click(screen.getByRole('button', { name: '🎵 Préparer les musiques (≈ 41018496 o)' }));
+    await attendre();
+    expect(confirmer.mock.calls[0][0]).toBe('🎵 Préparer les musiques des mods (41018496 o) ?');
+    expect(preparerMusiques).not.toHaveBeenCalled();
+    confirmer.mockImplementation(async () => true);
+    await fireEvent.click(screen.getByRole('button', { name: /Préparer les musiques/ }));
+    await attendre();
+    expect(preparerMusiques).toHaveBeenCalledWith(7, 41018496);
+    // Taille inconnue (Firehouse muet, rien de connu) : rien n'est préparé, c'est dit.
+    preparerMusiques.mockClear();
+    confirmer.mockClear();
+    tailleMusiques.mockImplementation(async () => null);
+    reponse = liste([dk({ etat: 'telecharge', revision_rangee: 1, allume: true })], {
+      musiques: { actives: 1, raison: null, taille_connue: null, meme_ensemble: false, a_preparer: true },
+    });
+    cleanup();
+    await ouvrir({ deplie: true });
+    await fireEvent.click(screen.getByRole('button', { name: '🎵 Préparer les musiques' }));
+    await attendre();
+    expect(confirmer).not.toHaveBeenCalled();
+    expect(preparerMusiques).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('pas encore connue'), 'alerte');
   });
 });

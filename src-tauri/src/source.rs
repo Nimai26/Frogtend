@@ -527,6 +527,20 @@ impl Source {
         }
     }
 
+    /// Contrat 1.55 : `HEAD /switch/{tid}/bgm-bars?mods=…` (`route` : `mods_switch::route_bgm_bars`), avec un délai COURT
+    /// (5 s : on est au lancement d'une partie). La réponse est rendue telle quelle (code, `X-Sha256`, `Content-Length`,
+    /// `X-Version-Jeu`, `X-Code`) ; un délai dépassé ou une panne de réseau rendent `Erreur::Reseau`. En mode simulé :
+    /// comme Firehouse injoignable (jamais de musique inventée).
+    pub async fn tete_bgm_bars(&self, route: &str) -> Resultat<crate::firehouse::Brute> {
+        match self {
+            Source::Firehouse(c) => match tokio::time::timeout(crate::mods_switch::DELAI_TETE_MUSIQUES, c.brute(reqwest::Method::HEAD, route, None, &[])).await {
+                Ok(r) => r,
+                Err(_) => Err(Erreur::Reseau("Firehouse ne répond pas assez vite pour les musiques.".into())),
+            },
+            Source::Simulee => Err(Erreur::Reseau("Mode simulé : pas de musiques de mods.".into())),
+        }
+    }
+
     /// Tous les visuels d'un jeu (contrat 1.6, galerie) : `{medias_empreinte, medias: [...]}`. En mode simulé : aucun
     /// (comme un jeu dont les images ne sont pas encore rapatriées).
     pub async fn medias(&self, id: i64) -> Resultat<Value> {

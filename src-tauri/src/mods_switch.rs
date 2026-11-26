@@ -58,6 +58,14 @@ fn liste_de_textes(v: &Value) -> Vec<String> {
     v.as_array().into_iter().flatten().filter_map(|x| x.as_str().map(String::from)).collect()
 }
 
+/// Les `amorces` d'un mod (contrat 1.55) : des chaînes non vides, sans doublon, triées ; absent ou autre forme → `[]`.
+fn amorces_de(v: &Value) -> Vec<String> {
+    let mut l: Vec<String> = liste_de_textes(v).into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    l.sort();
+    l.dedup();
+    l
+}
+
 /// La mise à jour SERVIE par Firehouse pour ce jeu (`version_servie`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct VersionServie {
@@ -167,6 +175,16 @@ pub struct ModServi {
     pub type_mod: Option<String>,
     pub interet: Option<u8>,
     pub public: Option<String>,
+    /// Contrat 1.55 : les entrées du `BGM.bars` que ce mod remplace (`[]` : pas un mod de musique). Gardées par
+    /// Firehouse, jamais dans l'archive : le fichier de musique est FABRIQUÉ par Firehouse (`bgm-bars`).
+    pub amorces: Vec<String>,
+}
+
+impl ModServi {
+    /// Un mod « de musique » (contrat 1.55) : ses `amorces` ne sont pas vides.
+    pub fn musique(&self) -> bool {
+        !self.amorces.is_empty()
+    }
 }
 
 /// Le public « adulte » (contrat 1.46) : servi seulement à un jeton ADMIN.
@@ -203,6 +221,7 @@ impl ModServi {
             type_mod: texte_ou_rien(&v["type"]).map(|t| t.to_lowercase()),
             interet: entier(&v["interet"]).filter(|n| (1..=5).contains(n)).map(|n| n as u8),
             public: texte_ou_rien(&v["public"]).map(|t| t.to_lowercase()),
+            amorces: amorces_de(&v["amorces"]),
         })
     }
 }
@@ -465,9 +484,18 @@ pub struct ManifesteMod {
     /// Firehouse a dit « adulte » au moins une fois pour ce mod : tant que sa fiche dit `null`, il reste réservé.
     #[serde(default)]
     pub adulte_vu: bool,
+    /// Contrat 1.55 : les entrées du `BGM.bars` que ce mod remplace (`[]` : pas un mod de musique ; rangé avant la
+    /// 1.55 : `[]` jusqu'à la prochaine lecture de la liste, `rafraichir`).
+    #[serde(default)]
+    pub amorces: Vec<String>,
 }
 
 impl ManifesteMod {
+    /// Un mod « de musique » (contrat 1.55).
+    pub fn musique(&self) -> bool {
+        !self.amorces.is_empty()
+    }
+
     /// Un mod RÉSERVÉ (✅ brief § 2, contrat 1.46 ; relecture des experts) : tout mod dont le public n'est pas
     /// EXPLICITEMENT « tous » ou « ado » — « adulte », fiche pas (encore) écrite (`null`, rangé avant la 1.46 ou avant
     /// sa fiche), valeur inconnue. Les mods rangés sont communs à la maison : un mod réservé n'est montré et posé que
@@ -647,7 +675,9 @@ pub fn ranger_avec(stock: &Path, archive: &Path, m: &ModServi, servie: Option<&V
             None => {}
         }
     }
-    if garder.is_empty() {
+    // Un mod de MUSIQUE (contrat 1.55) peut n'avoir rien d'autre que ses amorces : sa musique vient du fichier commun
+    // fabriqué par Firehouse (avis de l'expert lancement, 26/11 : accepter une archive vide quand `amorces` ne l'est pas).
+    if garder.is_empty() && !m.musique() {
         return Err(Erreur::Refus("Ce mod ne contient rien que l'émulateur sache utiliser : rien n'est installé.".into()));
     }
     let total: u64 = garder.values().map(|(_, t)| *t).sum();
@@ -662,6 +692,8 @@ pub fn ranger_avec(stock: &Path, archive: &Path, m: &ModServi, servie: Option<&V
     }
     let mut fichiers: Vec<FichierRange> = Vec::new();
     let resultat = (|| -> Resultat<()> {
+        // Le dossier existe toujours, même pour un mod de musique sans autre fichier.
+        std::fs::create_dir_all(&nouveau)?;
         for i in 0..z.len() {
             let mut e = z.by_index(i).map_err(|e| Erreur::Disque(format!("Archive du mod abîmée ({e}).")))?;
             if e.is_dir() {
@@ -726,6 +758,7 @@ pub fn ranger_avec(stock: &Path, archive: &Path, m: &ModServi, servie: Option<&V
         public: m.public.clone(),
         // « Adulte » une fois : retenu pour toujours (une révision suivante sans fiche reste réservée).
         adulte_vu: m.public.as_deref() == Some(PUBLIC_ADULTE) || ranges(stock).iter().any(|x| x.cle == m.cle && x.adulte_vu),
+        amorces: m.amorces.clone(),
     };
     // La nouvelle révision est vérifiée sur le disque AVANT tout échange (relue : chemins, tailles, empreintes).
     if !dossier_conforme(&nouveau, &man.fichiers) {
@@ -813,6 +846,7 @@ pub fn rafraichir(stock: &Path, liste: &ListeMods) -> usize {
         r.interet = m.interet;
         r.public = m.public.clone();
         r.adulte_vu |= m.public.as_deref() == Some(PUBLIC_ADULTE);
+        r.amorces = m.amorces.clone();
         if r == avant {
             continue;
         }
@@ -914,8 +948,7 @@ pub fn noter_arrivee(donnees: &Path, stock: &Path, base: u64, m: &ManifesteMod) 
     let rangs = ranges(stock);
     let nouveau = !rangs.iter().any(|r| r.cle == m.cle);
     let choix = crate::contenus_switch::charger(donnees).0.jeu(base);
-    let en_conflit = nouveau
-        && rangs.iter().any(|b| b.cle != m.cle && choix.mod_actif(&b.cle) && (m.conflits.contains(&b.cle) || b.conflits.contains(&m.cle)));
+    let en_conflit = nouveau && rangs.iter().any(|b| b.cle != m.cle && choix.mod_actif(&b.cle) && en_conflit(m, b));
     if en_conflit {
         crate::contenus_switch::choisir_mods(donnees, base, &[(m.cle.clone(), false)])?;
     }
@@ -985,6 +1018,9 @@ pub struct PoseNotee {
     #[serde(default = "vrai")]
     pub actif: bool,
     pub fichiers: BTreeMap<String, (u64, u64)>,
+    /// Contrat 1.55 : posé SANS son `romfs/Audio/Static/BGM.bars` (le fichier de musique commun était actif).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sans_bgm: bool,
 }
 
 /// Un nom de dossier SIMPLE (lu dans la note : jamais un chemin, jamais un nom que Windows ou Frogtend réserve).
@@ -1055,8 +1091,10 @@ const PREFIXE_COPIE: &str = ".frogtend-copie-";
 const MARQUE_COPIE: &str = ".frogtend-copie-en-cours";
 
 /// Copie le mod rangé `source` dans un dossier provisoire à Frogtend, à côté de `dossier_jeu` (même disque : il sera
-/// renommé à sa place). Rend ce dossier. Un reste d'une copie interrompue n'est effacé que s'il porte la marque.
-fn copier_mod(source: &Path, dossier_jeu: &Path, cle: &str) -> Resultat<PathBuf> {
+/// renommé à sa place). Rend ce dossier et le nombre de fichiers SAUTÉS (`sans_bgm` : le fichier de musique commun est
+/// actif, le `romfs/Audio/Static/BGM.bars` du mod n'est jamais posé — contrat 1.55). Un reste d'une copie interrompue
+/// n'est effacé que s'il porte la marque.
+fn copier_mod(source: &Path, dossier_jeu: &Path, cle: &str, sans_bgm: bool) -> Resultat<(PathBuf, usize)> {
     let parent = dossier_jeu.parent().ok_or_else(|| Erreur::Disque("dossier des mods inattendu".into()))?;
     let tid = dossier_jeu.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let base = format!("{PREFIXE_COPIE}{tid}-{cle}");
@@ -1070,7 +1108,12 @@ fn copier_mod(source: &Path, dossier_jeu: &Path, cle: &str) -> Resultat<PathBuf>
         tmp = parent.join(format!("{base}-{n}"));
         n += 1;
     }
-    let l = fichiers_du_dossier(source).map_err(|e| Erreur::Disque(format!("mod rangé illisible ({e})")))?;
+    let mut l = fichiers_du_dossier(source).map_err(|e| Erreur::Disque(format!("mod rangé illisible ({e})")))?;
+    let avant = l.len();
+    if sans_bgm {
+        l.retain(|f| !est_chemin_bgm(f));
+    }
+    let sautes = avant - l.len();
     std::fs::create_dir_all(&tmp)?;
     std::fs::write(tmp.join(MARQUE_COPIE), b"")?;
     let copie = (|| -> Resultat<()> {
@@ -1092,7 +1135,7 @@ fn copier_mod(source: &Path, dossier_jeu: &Path, cle: &str) -> Resultat<PathBuf>
         return Err(e);
     }
     std::fs::remove_file(tmp.join(MARQUE_COPIE))?;
-    Ok(tmp)
+    Ok((tmp, sautes))
 }
 
 /// Un mod à mettre d'accord dans un émulateur.
@@ -1112,6 +1155,16 @@ pub struct Voulu {
     /// un mod masqué y est COUPÉ (`[DisabledAddOns]`) plutôt que retiré (ni recopie à chaque alternance de profils, ni
     /// nom visible).
     pub commun: bool,
+    /// Contrat 1.55 : le fichier de musique commun (« !Firehouse - musiques ») est actif pour cette partie : le
+    /// `romfs/Audio/Static/BGM.bars` du dossier de ce mod n'est jamais posé.
+    pub sans_bgm: bool,
+}
+
+impl Voulu {
+    /// Ce mod rangé porte-t-il un `romfs/Audio/Static/BGM.bars` à lui ?
+    fn porte_un_bgm(&self) -> bool {
+        self.m.fichiers.iter().any(|f| est_chemin_bgm(&f.chemin))
+    }
 }
 
 /// Le nom à dire d'un mod réservé (jamais son vrai nom au journal).
@@ -1170,6 +1223,11 @@ pub struct BilanMods {
     pub abrite: bool,
     /// Les raisons qui nomment un mod RÉSERVÉ (clé, raison) : jamais au journal, sur la fiche du seul profil qui le voit.
     pub reservees: Vec<(String, String)>,
+    /// Contrat 1.55 : combien de `romfs/Audio/Static/BGM.bars` venus du dossier d'un mod ont été SAUTÉS (le fichier de
+    /// musique commun est actif). Dit au journal par un nombre.
+    pub bgm_sautes: usize,
+    /// Contrat 1.55 : ce qu'est devenu le fichier de musique commun à ce lancement (`None` : rien à dire).
+    pub musiques: Option<LigneMusiques>,
 }
 
 impl BilanMods {
@@ -1293,7 +1351,9 @@ pub fn planifier(dossier_jeu: &Path, voulus: &[Voulu], note: &BTreeMap<String, P
                     if !n.actif {
                         p.etapes.push(Etape::Basculer { cle: v.m.cle.clone(), actif: true });
                     }
-                } else if n.revision != v.m.revision || !n.sha256.eq_ignore_ascii_case(&v.m.sha256) {
+                } else if n.revision != v.m.revision || !n.sha256.eq_ignore_ascii_case(&v.m.sha256) || (v.porte_un_bgm() && n.sans_bgm != v.sans_bgm) {
+                    // Contrat 1.55 : le fichier de musique commun s'allume ou s'éteint, et ce mod porte son propre
+                    // BGM.bars : reposé sans lui (ou de nouveau avec).
                     p.etapes.push(Etape::Remplacer { cle: v.m.cle.clone(), nom });
                     p.a_copier = p.a_copier.saturating_add(taille);
                 } else if !n.actif {
@@ -1410,8 +1470,11 @@ pub fn synchroniser(dossier_jeu: &Path, voulus: &[Voulu], abri_demande: bool, ab
             Etape::Poser { cle, nom } | Etape::Remplacer { cle, nom } => {
                 let Some(v) = voulus.iter().find(|v| v.m.cle == cle) else { continue };
                 std::fs::create_dir_all(dossier_jeu)?;
-                let tmp = match copier_mod(&v.source, dossier_jeu, &cle) {
-                    Ok(t) => t,
+                let tmp = match copier_mod(&v.source, dossier_jeu, &cle, v.sans_bgm) {
+                    Ok((t, sautes)) => {
+                        b.bgm_sautes += sautes;
+                        t
+                    }
                     Err(e) => {
                         let r = format!("« {} » pas posé ({e})", v.m.nom);
                         if v.reserve {
@@ -1440,7 +1503,7 @@ pub fn synchroniser(dossier_jeu: &Path, voulus: &[Voulu], abri_demande: bool, ab
                     return Err(e.into());
                 }
                 let r = releve(&d)?;
-                note.insert(cle.clone(), PoseNotee { dossier: nom.clone(), revision: v.m.revision, sha256: v.m.sha256.clone(), actif: true, fichiers: r });
+                note.insert(cle.clone(), PoseNotee { dossier: nom.clone(), revision: v.m.revision, sha256: v.m.sha256.clone(), actif: true, fichiers: r, sans_bgm: v.sans_bgm });
                 ecrire_note(dossier_jeu, &note)?;
                 b.poses.push(etiquette(&cle, &nom));
             }
@@ -1507,7 +1570,7 @@ pub fn voulus_pour(
                     poser = false;
                 }
             }
-            Voulu { source: stock.join(&m.cle), m: m.clone(), poser, reserve: m.a_taire(), masque: !visible, commun: false }
+            Voulu { source: stock.join(&m.cle), m: m.clone(), poser, reserve: m.a_taire(), masque: !visible, commun: false, sans_bgm: false }
         })
         .collect()
 }
@@ -1522,14 +1585,24 @@ pub struct DernierePose {
     /// alors à `raisons` par `pour_le_profil`), jamais envoyées telles quelles à l'interface.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reservees: Vec<(String, String)>,
+    /// Contrat 1.55 : ce qu'est devenu le fichier de musique commun à cette partie.
+    #[serde(default)]
+    pub musiques: Option<LigneMusiques>,
 }
 
 impl DernierePose {
-    /// Ce que CE profil peut lire de la dernière pose (`liste` : sa dernière liste reçue).
+    /// Ce que CE profil peut lire de la dernière pose (`liste` : sa dernière liste reçue). La ligne des musiques n'est
+    /// gardée que si ce profil voit TOUS les mods réservés qui y comptent (jamais rien d'un autre profil).
     pub fn pour_le_profil(mut self, liste: Option<&ListeMods>) -> Self {
+        let voit = |cle: &str| liste.is_some_and(|l| l.mods.iter().any(|m| m.cle == cle));
         for (cle, r) in std::mem::take(&mut self.reservees) {
-            if liste.is_some_and(|l| l.mods.iter().any(|m| m.cle == cle)) {
+            if voit(&cle) {
                 self.raisons.push(r);
+            }
+        }
+        if let Some(m) = self.musiques.take() {
+            if m.reservees.iter().all(|c| voit(c)) {
+                self.musiques = Some(LigneMusiques { reservees: vec![], ensemble: vec![], ..m });
             }
         }
         self
@@ -1545,10 +1618,15 @@ pub fn noter_derniere_pose(stock: &Path, emulateur: &str, raisons: &[String]) {
 
 /// `noter_derniere_pose`, avec les raisons qui nomment un mod réservé (gardées à part, par clé).
 pub fn noter_derniere_pose_avec(stock: &Path, emulateur: &str, raisons: &[String], reservees: &[(String, String)]) {
+    noter_derniere_pose_bilan(stock, emulateur, raisons, reservees, None);
+}
+
+/// `noter_derniere_pose_avec`, avec la ligne des musiques (contrat 1.55).
+fn noter_derniere_pose_bilan(stock: &Path, emulateur: &str, raisons: &[String], reservees: &[(String, String)], musiques: Option<&LigneMusiques>) {
     if !stock.is_dir() {
         return;
     }
-    let d = DernierePose { quand: crate::noyau::maintenant(), emulateur: emulateur.into(), raisons: raisons.to_vec(), reservees: reservees.to_vec() };
+    let d = DernierePose { quand: crate::noyau::maintenant(), emulateur: emulateur.into(), raisons: raisons.to_vec(), reservees: reservees.to_vec(), musiques: musiques.cloned() };
     if let Ok(o) = serde_json::to_vec_pretty(&d) {
         let tmp = stock.join(format!("{FICHIER_DERNIERE_POSE}.tmp"));
         if std::fs::write(&tmp, o).is_ok() {
@@ -1612,14 +1690,22 @@ pub fn poser_ryubing(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, s
 /// `poser_ryubing` pour le profil qui lance (`liste` : SA dernière liste reçue, `liste_du_profil`) : un mod réservé
 /// qu'elle ne contient pas n'est jamais posé (retiré s'il l'était), ni nommé.
 pub fn poser_ryubing_pour(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
-    let r = poser_ryubing_dans(donnees, ryubing, racine, base, stock, utilisee, liste);
+    poser_ryubing_avec(donnees, ryubing, racine, base, stock, utilisee, liste, &DecisionMusiques::ignorer())
+}
+
+/// `poser_ryubing_pour` avec la décision des musiques (contrat 1.55, `resoudre_musiques`) : le dossier commun
+/// « !Firehouse - musiques » posé, remplacé ou retiré après les mods, ajouté à mods.json.
+#[allow(clippy::too_many_arguments)]
+pub fn poser_ryubing_avec(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>, liste: Option<&ListeMods>, musiques: &DecisionMusiques) -> Resultat<BilanMods> {
+    let r = poser_ryubing_dans(donnees, ryubing, racine, base, stock, utilisee, liste, musiques);
     if let Ok(b) = &r {
-        noter_derniere_pose_avec(stock, "Ryubing", &b.raisons, &b.reservees);
+        noter_derniere_pose_bilan(stock, "Ryubing", &b.raisons, &b.reservees, b.musiques.as_ref());
     }
     r
 }
 
-fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
+#[allow(clippy::too_many_arguments)]
+fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>, liste: Option<&ListeMods>, musiques: &DecisionMusiques) -> Resultat<BilanMods> {
     let mut b = BilanMods::default();
     // Le chemin du mod dans mods.json doit être la chaîne EXACTE que Ryubing compose : `GetFullPath(-r)` + « \mods »
     // (texte de Ryubing) + les noms de `contents` et du dossier du jeu TELS QU'ILS SONT SUR LE DISQUE (Ryubing les
@@ -1627,7 +1713,7 @@ fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, 
     let racine = PathBuf::from(racine.to_string_lossy().replace('/', "\\"));
     let contents = sous_dossier_existant(&racine.join("mods"), "contents");
     let dossier_jeu = sous_dossier_existant(&contents, &format!("{base:016x}"));
-    if !stock.is_dir() && !dossier_jeu.join(NOTE_POSE).is_file() {
+    if !stock.is_dir() && !dossier_jeu.join(NOTE_POSE).is_file() && !dossier_jeu.join(NOTE_MUSIQUES).is_file() {
         return Ok(b);
     }
     if !crate::ryubing::portable(ryubing) {
@@ -1641,20 +1727,36 @@ fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, 
     let choix = crate::contenus_switch::charger(donnees).0.jeu(base);
     let lieu = crate::contenus_switch::lieu("ryubing", &racine);
     let (mut raisons, mut reservees) = (Vec::new(), Vec::new());
-    let v = voulus_pour(stock, &choix, utilisee, liste, &mut raisons, &mut reservees);
+    let mut v = voulus_pour(stock, &choix, utilisee, liste, &mut raisons, &mut reservees);
+    // Contrat 1.55 : le plan des musiques d'abord (un changement du BGM.bars met les parties à l'abri, comme un mod) ;
+    // le fichier commun actif, le BGM.bars d'un mod n'est jamais posé.
+    let pm = planifier_musiques(&dossier_jeu, &musiques.action);
+    // Le BGM.bars d'un mod de MUSIQUE n'est jamais posé (sa musique vient du fichier commun), même sans lui.
+    for x in &mut v {
+        x.sans_bgm = pm.en_place || x.m.musique();
+    }
     let abriter = || -> Resultat<()> {
         crate::ryubing::abriter_parties(ryubing, &racine, &format!("{base:016X}"))?;
         let _ = crate::contenus_switch::noter_abri_fait(donnees, base, &lieu);
         Ok(())
     };
-    let mut r = synchroniser(&dossier_jeu, &v, choix.abri_a_faire(&lieu), &abriter)?;
+    let mut r = synchroniser(&dossier_jeu, &v, choix.abri_a_faire(&lieu) || pm.change(), &abriter)?;
     r.raisons.splice(0..0, raisons);
     r.reservees.splice(0..0, reservees);
+    let fm = poser_les_musiques(&dossier_jeu, &pm, musiques, &mut r);
     if r.inchange {
         return Ok(r);
     }
-    let nos: Vec<(String, String, bool)> = r.presents.iter().map(|p| (p.dossier.clone(), p.chemin.to_string_lossy().to_string(), p.actif)).collect();
-    let partis: Vec<String> = r.partis.iter().map(|(_, c)| c.to_string_lossy().to_string()).collect();
+    let mut nos: Vec<(String, String, bool)> = r.presents.iter().map(|p| (p.dossier.clone(), p.chemin.to_string_lossy().to_string(), p.actif)).collect();
+    let mut partis: Vec<String> = r.partis.iter().map(|(_, c)| c.to_string_lossy().to_string()).collect();
+    if let Some(f) = &fm {
+        if f.en_place {
+            nos.push((DOSSIER_MUSIQUES.to_string(), dossier_jeu.join(DOSSIER_MUSIQUES).to_string_lossy().to_string(), true));
+        }
+        if let Some(p) = &f.parti {
+            partis.push(p.to_string_lossy().to_string());
+        }
+    }
     if let Err(e) = crate::ryubing::poser_mods_json(ryubing, &racine, base, &nos, &partis) {
         r.raisons.push(format!("liste des mods de Ryubing pas mise à jour ({e})"));
     }
@@ -1671,21 +1773,29 @@ pub fn poser_eden(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee
 /// `poser_eden` pour le profil qui lance (`liste` : SA dernière liste reçue) : un mod réservé qu'elle ne contient pas
 /// n'est jamais posé (retiré s'il l'était — Eden est commun à la maison), ni nommé.
 pub fn poser_eden_pour(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
-    let r = poser_eden_dans(donnees, eden, base, stock, utilisee, ouvert, liste);
+    poser_eden_avec(donnees, eden, base, stock, utilisee, ouvert, liste, &DecisionMusiques::ignorer())
+}
+
+/// `poser_eden_pour` avec la décision des musiques (contrat 1.55) : le dossier commun « !Firehouse - musiques » posé,
+/// remplacé ou retiré après les mods, jamais coupé dans `[DisabledAddOns]` tant qu'il est en place.
+#[allow(clippy::too_many_arguments)]
+pub fn poser_eden_avec(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool, liste: Option<&ListeMods>, musiques: &DecisionMusiques) -> Resultat<BilanMods> {
+    let r = poser_eden_dans(donnees, eden, base, stock, utilisee, ouvert, liste, musiques);
     if let Ok(b) = &r {
-        noter_derniere_pose_avec(stock, "Eden", &b.raisons, &b.reservees);
+        noter_derniere_pose_bilan(stock, "Eden", &b.raisons, &b.reservees, b.musiques.as_ref());
     }
     r
 }
 
-fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
+#[allow(clippy::too_many_arguments)]
+fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool, liste: Option<&ListeMods>, musiques: &DecisionMusiques) -> Resultat<BilanMods> {
     let mut b = BilanMods::default();
     let Some(load) = crate::eden::dossier_load(eden) else {
         b.raisons.push("le dossier des mods d'Eden est réglé hors du dossier d'Eden : les mods n'y sont pas posés".into());
         return Ok(b);
     };
     let dossier_jeu = sous_dossier_existant(&load, &format!("{base:016X}"));
-    if !stock.is_dir() && !dossier_jeu.join(NOTE_POSE).is_file() {
+    if !stock.is_dir() && !dossier_jeu.join(NOTE_POSE).is_file() && !dossier_jeu.join(NOTE_MUSIQUES).is_file() {
         return Ok(b);
     }
     if ouvert {
@@ -1709,24 +1819,32 @@ fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilise
     let (mut raisons, mut reservees) = (Vec::new(), Vec::new());
     let mut v = voulus_pour(stock, &choix, utilisee, liste, &mut raisons, &mut reservees);
     // Eden est commun à la maison : noms neutres pour un mod réservé, et un mod masqué est coupé, pas retiré.
+    // Contrat 1.55 : le fichier commun actif, le BGM.bars d'un mod n'est jamais posé.
+    let pm = planifier_musiques(&dossier_jeu, &musiques.action);
     for x in &mut v {
         x.commun = true;
+        x.sans_bgm = pm.en_place || x.m.musique();
     }
     let abriter = || -> Resultat<()> {
         crate::eden::abriter_parties_du_jeu(eden, base)?;
         let _ = crate::contenus_switch::noter_abri_fait(donnees, base, &lieu);
         Ok(())
     };
-    let mut r = synchroniser(&dossier_jeu, &v, choix.abri_a_faire(&lieu), &abriter)?;
+    let mut r = synchroniser(&dossier_jeu, &v, choix.abri_a_faire(&lieu) || pm.change(), &abriter)?;
     r.raisons.splice(0..0, raisons);
     r.reservees.splice(0..0, reservees);
+    let fm = poser_les_musiques(&dossier_jeu, &pm, musiques, &mut r);
     if r.inchange {
         return Ok(r);
     }
     // Les coupures : nos dossiers (allumés ou gardés éteints), et les noms de nos dossiers partis (rallumés : le nom
-    // ne désigne plus rien de la personne).
+    // ne désigne plus rien de la personne). Le dossier commun des musiques : jamais coupé (en place ou parti).
     let mut mods: Vec<(String, bool)> = r.presents.iter().map(|p| (p.dossier.clone(), p.actif)).collect();
     mods.extend(r.partis.iter().map(|(n, _)| (n.clone(), true)));
+    // Seulement quand il vient d'être posé (ou est parti) : une coupure faite ensuite par la personne est gardée.
+    if fm.as_ref().is_some_and(|f| f.fait == "posé" || f.parti.is_some()) {
+        mods.push((DOSSIER_MUSIQUES.to_string(), true));
+    }
     let Some(texte) = texte else {
         if r.presents.iter().any(|p| !p.actif) {
             r.raisons.push("Eden n'a pas encore de fichier de réglages : un mod gardé ne peut pas y être coupé".into());
@@ -1747,6 +1865,856 @@ fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilise
         }
     }
     Ok(r)
+}
+
+// --- Les musiques de Mario Kart 8 Deluxe (contrat 1.55, ✅ Seb 26/11) ---
+//
+// Un mod « de musique » porte des `amorces` (les entrées du BGM.bars qu'il remplace). Firehouse FABRIQUE UN SEUL
+// BGM.bars pour tous les mods de musique actifs du jeu (`GET|HEAD /switch/{tid}/bgm-bars?mods=…`) ; Frogtend le pose dans
+// UN dossier de mod commun, « !Firehouse - musiques » (nom accepté par Firehouse le 26/11), qui ne contient que
+// `romfs/Audio/Static/BGM.bars`. Chez Ryubing comme chez Eden, le PREMIER dossier par ordre de nom gagne (« ! » passe
+// avant les lettres et les chiffres). Règles (décisions de Seb et avis de l'expert lancement, 26/11) :
+// - les musiques actives : les mods voulus POSÉS (allumés, compatibles, sans réglage ni conflit) du profil QUI LANCE, à
+//   amorces non vides — jamais un mod réservé qu'il ne voit pas ;
+// - version stricte : posé seulement si la version utilisée est EXACTEMENT `X-Version-Jeu` (= `version_servie`) ; sinon,
+//   ou inconnue : pas de musique de mod, la raison sur la fiche ;
+// - au lancement, un HEAD de 5 s : même `X-Sha256` que le fichier posé → rien ; sinon le cache, sinon le téléchargement
+//   (reprise, plafond, sha256 vérifié) ; une refabrication due à une NOUVELLE version servie suit « mettre à jour les
+//   mods tout seul » ;
+// - `conflit` / `introuvable` → pas de musique de mod ; `original_absent` → l'existant gardé ;
+// - hors ligne : même ensemble (clés, révisions, version) que la note → gardé ; sinon retiré ;
+// - un changement du BGM.bars (pose, remplacement, retrait) met d'abord les parties à l'abri, comme un mod ;
+// - le journal : des nombres et un sha tronqué, jamais une clé ni une amorce.
+
+/// Le dossier de mod commun des musiques (nom exact, ASCII ; jamais passé par `nom_de_dossier`).
+pub const DOSSIER_MUSIQUES: &str = "!Firehouse - musiques";
+/// La note de Frogtend sur le fichier de musique posé (à côté des mods, comme `.frogtend-mods.json`).
+pub const NOTE_MUSIQUES: &str = ".frogtend-musiques.json";
+/// Le seul fichier du dossier commun.
+pub const CHEMIN_BGM: &str = "romfs/Audio/Static/BGM.bars";
+/// Le cache des fichiers de musique reçus, dans le rangement du jeu mais HORS de `ranges()` (un dossier, jamais un
+/// manifeste `.json` : jamais pris pour un mod).
+const CACHE_MUSIQUES: &str = ".musiques";
+/// Le délai du HEAD au lancement.
+pub const DELAI_TETE_MUSIQUES: std::time::Duration = std::time::Duration::from_secs(5);
+/// Le provisoire d'une pose (même dossier que le BGM.bars : renommé par-dessus une fois vérifié).
+const PROVISOIRE_BGM: &str = ".frogtend-BGM.bars.tmp";
+
+/// Ce chemin relatif (`/` ou `\`) est-il `romfs/Audio/Static/BGM.bars` (sans casse) ?
+pub fn est_chemin_bgm(rel: &str) -> bool {
+    rel.replace('\\', "/").trim_matches('/').eq_ignore_ascii_case(CHEMIN_BGM)
+}
+
+/// L'ensemble des mods de musique actifs : (clé, révision), trié par clé.
+pub type Ensemble = Vec<(String, u64)>;
+
+/// Les mods de musique actifs parmi les voulus : POSÉS (allumés, visibles du profil, compatibles…) et à amorces non vides.
+pub fn ensemble_musiques(voulus: &[Voulu]) -> Ensemble {
+    let mut l: Ensemble = voulus.iter().filter(|v| v.poser && !v.masque && v.m.musique()).map(|v| (v.m.cle.clone(), v.m.revision)).collect();
+    l.sort();
+    l.dedup();
+    l
+}
+
+/// Ce qu'il faut pour les musiques du profil qui lance : l'ensemble actif, les clés à taire parmi lui (mods réservés) et
+/// la version servie connue (sa dernière liste, sinon celle notée au rangement d'un mod de musique).
+pub fn ensemble_du_profil(donnees: &Path, stock: &Path, base: u64, utilisee: Option<u32>, liste: Option<&ListeMods>) -> (Ensemble, Vec<String>, Option<VersionServie>) {
+    let choix = crate::contenus_switch::charger(donnees).0.jeu(base);
+    let v = voulus_pour(stock, &choix, utilisee, liste, &mut Vec::new(), &mut Vec::new());
+    let e = ensemble_musiques(&v);
+    let dans = |c: &str| e.iter().any(|(x, _)| x == c);
+    let a_taire = v.iter().filter(|x| x.reserve && dans(&x.m.cle)).map(|x| x.m.cle.clone()).collect();
+    let servie = liste.and_then(|l| l.version_servie.clone()).or_else(|| v.iter().find(|x| dans(&x.m.cle)).and_then(|x| x.m.version_servie.clone()));
+    (e, a_taire, servie)
+}
+
+/// La route du fichier de musique fabriqué pour cet ensemble (clés triées, séparées par des virgules ; une clé du
+/// contrat n'a que des lettres, chiffres et tirets).
+pub fn route_bgm_bars(tid_base: u64, ensemble: &Ensemble) -> String {
+    let cles: Vec<&str> = ensemble.iter().map(|(c, _)| c.as_str()).collect();
+    format!("/switch/{tid_base:016X}/bgm-bars?mods={}", cles.join(","))
+}
+
+/// Le dossier du cache des fichiers de musique d'un jeu.
+pub fn dossier_cache_musiques(stock: &Path) -> PathBuf {
+    stock.join(CACHE_MUSIQUES)
+}
+
+/// Le nom d'un fichier de musique reçu : `BGM-<sha12>.bars` (le `.part` d'un autre ensemble n'est jamais repris).
+pub fn nom_cache_bgm(sha256: &str) -> String {
+    format!("BGM-{}.bars", &sha256[..12.min(sha256.len())])
+}
+
+/// Un sha256 du contrat : 64 hexadécimaux.
+fn sha_valide(s: &str) -> bool {
+    s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Ce que Frogtend a posé dans le dossier commun des musiques : l'ensemble, la version du fichier (`X-Version-Jeu`),
+/// son sha256 et sa taille, et le relevé (taille, date) de chaque fichier du dossier (la preuve qu'il est intact).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NoteMusiques {
+    pub cles: Ensemble,
+    pub version: u64,
+    pub sha256: String,
+    pub taille: u64,
+    pub fichiers: BTreeMap<String, (u64, u64)>,
+    /// Le sha256 ATTENDU d'une pose en cours, noté AVANT le renommage : une coupure en route laisse un dossier que
+    /// Frogtend reconnaît encore comme le sien (seulement son BGM.bars, à ce sha ou à l'ancien).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub en_cours: Option<String>,
+}
+
+/// La note des musiques : `Ok(None)` absente, `Err(())` illisible.
+fn lire_note_musiques(d: &Path) -> std::result::Result<Option<NoteMusiques>, ()> {
+    match std::fs::read(d.join(NOTE_MUSIQUES)) {
+        Ok(o) if o.len() <= 1 << 20 => serde_json::from_slice::<NoteMusiques>(&o).map(Some).map_err(|_| ()),
+        Ok(_) => Err(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(()),
+    }
+}
+
+/// La note des musiques d'un dossier de mods d'un émulateur (absente ou illisible : `None`).
+pub fn note_musiques(dossier_jeu: &Path) -> Option<NoteMusiques> {
+    lire_note_musiques(dossier_jeu).ok().flatten()
+}
+
+fn ecrire_note_musiques(d: &Path, n: Option<&NoteMusiques>) -> Resultat<()> {
+    let f = d.join(NOTE_MUSIQUES);
+    let Some(n) = n else {
+        if f.exists() {
+            std::fs::remove_file(&f)?;
+        }
+        return Ok(());
+    };
+    std::fs::create_dir_all(d)?;
+    let tmp = d.join(format!("{NOTE_MUSIQUES}.tmp"));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(n).map_err(|e| Erreur::Disque(e.to_string()))?)?;
+    std::fs::rename(&tmp, &f)?;
+    Ok(())
+}
+
+/// Le dossier des mods d'un jeu chez Ryubing (`<racine>\mods\contents\<tid>`), tel qu'il est écrit sur le disque.
+pub fn dossier_mods_ryubing(racine: &Path, base: u64) -> PathBuf {
+    let racine = PathBuf::from(racine.to_string_lossy().replace('/', "\\"));
+    let contents = sous_dossier_existant(&racine.join("mods"), "contents");
+    sous_dossier_existant(&contents, &format!("{base:016x}"))
+}
+
+/// Le dossier des mods d'un jeu chez Eden (`<load>\<TID>`) ; `None` : dossier des mods réglé hors d'Eden.
+pub fn dossier_mods_eden(eden: &Path, base: u64) -> Option<PathBuf> {
+    crate::eden::dossier_load(eden).map(|load| sous_dossier_existant(&load, &format!("{base:016X}")))
+}
+
+/// Dit simplement une version brute (« 3.0.1 » si c'est la version servie dont Firehouse donne le nom).
+fn version_dite(v: u64, servie: Option<&VersionServie>) -> String {
+    if v == 0 {
+        return "la version d'origine (sans mise à jour)".into();
+    }
+    match servie.filter(|s| s.version == Some(v)).and_then(|s| s.version_affichee.clone()) {
+        Some(a) => format!("la version {a}"),
+        None => "une autre mise à jour".into(),
+    }
+}
+
+/// La fin de chaque raison : ce que la personne entendra.
+const MUSIQUES_D_ORIGINE: &str = "le jeu garde ses musiques d'origine";
+
+/// La raison (jamais un nom de mod) de ne PAS poser de musique de mod pour une question de version : la version
+/// utilisée inconnue, ou différente de celle du fichier (`fichier` : `X-Version-Jeu` ; sinon `version_servie`). `None` :
+/// la version va (ou ne peut pas encore être jugée : le HEAD le dira).
+pub fn raison_version_musiques(servie: Option<&VersionServie>, fichier: Option<u64>, utilisee: Option<u32>) -> Option<String> {
+    let Some(u) = utilisee.map(u64::from) else {
+        return Some(format!(
+            "la version du jeu utilisée n'est pas connue (les musiques des mods ne servent qu'avec la version exacte pour laquelle elles sont faites) : {MUSIQUES_D_ORIGINE}"
+        ));
+    };
+    let sv = servie.and_then(|s| s.version);
+    if let (Some(f), Some(s)) = (fichier, sv) {
+        if f != s {
+            return Some(format!("Firehouse a préparé les musiques pour une autre version que celle qu'il sert : {MUSIQUES_D_ORIGINE}"));
+        }
+    }
+    let cible = fichier.or(sv)?;
+    if cible == u {
+        return None;
+    }
+    let pour = match servie.filter(|s| s.version == Some(cible)).and_then(|s| s.version_affichee.clone()) {
+        Some(a) => format!("la version {a}"),
+        None => "une autre version".into(),
+    };
+    Some(format!("musiques des mods faites pour {pour} ; ce jeu utilise {} : {MUSIQUES_D_ORIGINE}", version_dite(u, servie)))
+}
+
+/// Pourquoi il n'y a pas de musique de mod (mots simples, jamais un nom de mod).
+pub const RAISON_MUSIQUES_HORS_LIGNE: &str =
+    "Firehouse ne répond pas : les musiques des mods n'ont pas pu être préparées pour ce choix de mods ; le jeu garde ses musiques d'origine";
+pub const RAISON_MUSIQUES_CONFLIT: &str =
+    "deux mods de musique allumés changent la même musique du jeu : éteins celui que tu ne veux pas ; en attendant, le jeu garde ses musiques d'origine";
+pub const RAISON_MUSIQUES_ORIGINAL_ABSENT: &str = "Firehouse prépare encore les musiques de cette version du jeu : celles déjà en place sont gardées";
+pub const RAISON_MUSIQUES_ORIGINAL_ABSENT_RIEN: &str = "Firehouse prépare encore les musiques de cette version du jeu : le jeu garde ses musiques d'origine pour cette partie";
+pub const RAISON_MUSIQUES_INTROUVABLE: &str = "Firehouse ne sert plus un des mods de musique allumés : le jeu garde ses musiques d'origine";
+pub const RAISON_MUSIQUES_REPONSE: &str = "Firehouse n'a pas donné les musiques des mods comme prévu : le jeu garde ses musiques d'origine";
+pub const RAISON_MUSIQUES_OCCUPE: &str = "les musiques des mods sont encore en train d'arriver : le jeu garde ses musiques d'origine pour cette partie";
+pub const RAISON_MUSIQUES_PROCHAINE: &str = "les musiques des mods seront prêtes à la prochaine partie : le jeu garde ses musiques d'origine pour celle-ci";
+
+/// La raison quand les musiques ne sont pas accordées (aucun oui pour cet ensemble et cette version, ni « mettre à jour
+/// tout seul ») : le bouton de la fiche.
+pub fn raison_musiques_a_preparer(taille: Option<u64>) -> String {
+    let t = taille.filter(|n| *n > 0).map(|n| format!(" (≈ {})", crate::erreurs::taille_lisible(n))).unwrap_or_default();
+    format!("musiques à préparer{t} : bouton « 🎵 Préparer les musiques » sur la fiche du jeu ; en attendant, {MUSIQUES_D_ORIGINE}")
+}
+
+/// Le temps donné au téléchargement des musiques AU LANCEMENT (au-delà : la partie part avec les musiques d'origine, le
+/// `.part` est gardé pour la fois suivante ; jamais pendant la partie).
+pub const BUDGET_MUSIQUES_LANCEMENT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Le plafond d'un fichier de musique dont Firehouse ne dit pas la taille (le sha256 est toujours vérifié).
+pub const PLAFOND_MUSIQUES: u64 = 64 << 20;
+
+// --- L'accord de la personne (✅ Seb 26/11 : les 41 Mo ne se téléchargent jamais sans un oui) ---
+
+const FICHIER_ACCORD: &str = "accord.json";
+
+/// Le dernier OUI de la personne pour les musiques de ce jeu (`<stock>\.musiques\accord.json`) : écrit SEULEMENT quand
+/// elle dit oui à l'allumage ou au téléchargement d'un mod de musique, ou au bouton « 🎵 Préparer les musiques » —
+/// jamais par une extinction. Au lancement, le fichier n'est téléchargé que si cet accord couvre les clés de l'ensemble
+/// ET la même version (ou avec « mettre à jour les mods tout seul »).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AccordMusiques {
+    /// Les clés des mods de musique de ce oui (triées).
+    pub cles: Vec<String>,
+    /// La version brute du jeu de ce oui (`None` : pas connue alors ; n'accorde rien).
+    pub version: Option<u64>,
+    /// La taille annoncée à la personne.
+    pub taille: Option<u64>,
+    pub quand: String,
+}
+
+/// Le dernier accord pour les musiques de ce jeu.
+pub fn accord_musiques(stock: &Path) -> Option<AccordMusiques> {
+    let f = dossier_cache_musiques(stock).join(FICHIER_ACCORD);
+    if std::fs::metadata(&f).ok()?.len() > 1 << 20 {
+        return None;
+    }
+    serde_json::from_slice(&std::fs::read(f).ok()?).ok()
+}
+
+/// Note le oui de la personne pour cet ensemble, cette version et cette taille.
+pub fn noter_accord_musiques(stock: &Path, ensemble: &Ensemble, version: Option<u64>, taille: Option<u64>) -> Resultat<()> {
+    let d = dossier_cache_musiques(stock);
+    std::fs::create_dir_all(&d)?;
+    let mut cles: Vec<String> = ensemble.iter().map(|(c, _)| c.clone()).collect();
+    cles.sort();
+    cles.dedup();
+    let a = AccordMusiques { cles, version, taille, quand: crate::noyau::maintenant() };
+    let tmp = d.join(format!("{FICHIER_ACCORD}.tmp"));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&a).map_err(|e| Erreur::Disque(e.to_string()))?)?;
+    std::fs::rename(&tmp, d.join(FICHIER_ACCORD))?;
+    Ok(())
+}
+
+/// L'accord couvre-t-il cet ensemble (toutes ses clés) pour cette version ?
+pub fn accord_couvre(stock: &Path, ensemble: &Ensemble, version: u64) -> bool {
+    accord_musiques(stock).is_some_and(|a| a.version == Some(version) && ensemble.iter().all(|(c, _)| a.cles.contains(c)))
+}
+
+/// Ce qu'il faut faire du fichier de musique commun à ce lancement (décidé AVANT la pose, sans rien écrire chez
+/// l'émulateur).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Musiques {
+    /// Ne pas y toucher du tout (appels d'avant la 1.55, émulateur ouvert).
+    Ignorer,
+    /// Pas de musique de mod : le fichier commun part s'il est là (`raison` : pourquoi, quand des mods de musique sont
+    /// allumés).
+    Retirer { raison: Option<String> },
+    /// Garder ce qui est posé (`maj` : l'ensemble et la version à noter quand c'est le même fichier).
+    Garder { raison: Option<String>, maj: Option<(Ensemble, u64)> },
+    /// Poser ce fichier reçu et VÉRIFIÉ (dans le cache).
+    Poser { fichier: PathBuf, sha256: String, taille: u64, version: u64, cles: Ensemble },
+}
+
+/// La décision des musiques, avec ce qu'il faut pour la fiche et le journal.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DecisionMusiques {
+    pub action: Musiques,
+    /// Combien de mods de musique actifs pour le profil qui lance.
+    pub actives: usize,
+    /// Les clés des mods RÉSERVÉS parmi eux (la ligne de la fiche n'est montrée qu'au profil qui les voit ; le journal
+    /// ne dit alors pas combien).
+    pub a_taire: Vec<String>,
+    /// L'ensemble actif (gardé avec la dernière pose, jamais envoyé à l'interface).
+    pub ensemble: Ensemble,
+    /// Ce qui s'est passé avec Firehouse, pour le journal : des NOMBRES et un sha tronqué, jamais une clé.
+    pub journal: Vec<String>,
+}
+
+impl DecisionMusiques {
+    /// Ne pas toucher aux musiques.
+    pub fn ignorer() -> Self {
+        DecisionMusiques { action: Musiques::Ignorer, actives: 0, a_taire: vec![], ensemble: vec![], journal: vec![] }
+    }
+}
+
+/// Ce qu'il faut pour décider des musiques au lancement.
+pub struct DemandeMusiques<'a> {
+    /// `None` : pas de session (comme Firehouse injoignable).
+    pub source: Option<&'a crate::source::Source>,
+    pub stock: &'a Path,
+    /// Le dossier des mods du jeu dans l'émulateur (où vit la note des musiques).
+    pub dossier_jeu: &'a Path,
+    pub base: u64,
+    pub ensemble: Ensemble,
+    pub a_taire: Vec<String>,
+    pub utilisee: Option<u32>,
+    pub servie: Option<VersionServie>,
+    /// « Mettre à jour les mods tout seul » (`modsSwitch.auto` du profil) : le téléchargement est permis sans accord noté.
+    pub auto: bool,
+    /// Le temps donné au téléchargement (`BUDGET_MUSIQUES_LANCEMENT`).
+    pub budget: std::time::Duration,
+}
+
+/// Le fichier du cache pour ce sha256, s'il y est ENTIER et JUSTE (taille si elle est connue, empreinte relue).
+async fn cache_valide(stock: &Path, sha256: &str, taille: Option<u64>) -> Option<PathBuf> {
+    let f = dossier_cache_musiques(stock).join(nom_cache_bgm(sha256));
+    let n = std::fs::metadata(&f).ok()?.len();
+    if n == 0 || n > PLAFOND_MUSIQUES.max(taille.unwrap_or(0)) || taille.is_some_and(|t| t != n) {
+        return None;
+    }
+    let (g, s) = (f.clone(), sha256.to_string());
+    tokio::task::spawn_blocking(move || sha256_de(&g).is_ok_and(|x| x.eq_ignore_ascii_case(&s))).await.ok()?.then_some(f)
+}
+
+/// La taille du dernier fichier de musique connu de ce jeu (le plus récent du cache), pour l'annoncer quand Firehouse ne
+/// répond pas.
+pub fn derniere_taille_musiques(stock: &Path) -> Option<u64> {
+    std::fs::read_dir(dossier_cache_musiques(stock))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("BGM-") && e.file_name().to_string_lossy().ends_with(".bars"))
+        .filter_map(|e| e.metadata().ok())
+        .max_by_key(|m| date_ns(m))
+        .map(|m| m.len())
+}
+
+/// Télécharge le fichier de musique de `route` dans le cache (`<stock>\.musiques\BGM-<sha12>.bars`) : reprise `Range`
+/// depuis son `.part`, plafond = la taille lue par le HEAD (inconnue : `PLAFOND_MUSIQUES`), sha256 vérifié avant le
+/// renommage. Un seul à la fois par jeu. Les `.part` d'un AUTRE ensemble sont retirés ; le cache garde les 3 fichiers
+/// les plus récents.
+pub async fn telecharger_bgm(source: &crate::source::Source, stock: &Path, route: &str, sha256: &str, taille: Option<u64>) -> Resultat<PathBuf> {
+    if !sha_valide(sha256) {
+        return Err(Erreur::Refus("Firehouse ne dit pas tout ce qu'il faut pour vérifier les musiques : elles ne sont pas téléchargées.".into()));
+    }
+    let taille = taille.filter(|n| *n > 0);
+    let plafond = taille.unwrap_or(PLAFOND_MUSIQUES);
+    let dossier = dossier_cache_musiques(stock);
+    std::fs::create_dir_all(&dossier)?;
+    let _garde = occuper_stock(&dossier)?;
+    if let Some(f) = cache_valide(stock, sha256, taille).await {
+        return Ok(f);
+    }
+    if crate::jeux_pc::place_libre(&dossier).is_some_and(|l| l < plafond.saturating_mul(2) + MARGE) {
+        return Err(Erreur::Refus("Il n'y a plus assez de place sur ce disque pour les musiques.".into()));
+    }
+    let nom = nom_cache_bgm(sha256);
+    let part = nom.replace(".bars", ".part");
+    for e in std::fs::read_dir(&dossier).into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        if n.starts_with("BGM-") && n.ends_with(".part") && n != part {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    let cible = dossier.join(&nom);
+    let recus = source.telecharger_plafonne(route, &cible, Some(sha256), &[], Some(plafond), &|_, _| {}).await?;
+    let lu = std::fs::metadata(&cible).map(|x| x.len()).unwrap_or(0);
+    if lu != recus || taille.is_some_and(|t| t != recus) {
+        let _ = std::fs::remove_file(&cible);
+        return Err(Erreur::Serveur("Les musiques reçues n'ont pas la taille annoncée par Firehouse : elles ne sont pas gardées.".into()));
+    }
+    // Le cache ne grossit pas sans fin : les 3 fichiers les plus récents (fichiers de Frogtend, refaits par Firehouse).
+    let mut l: Vec<(u64, PathBuf)> = std::fs::read_dir(&dossier)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("BGM-") && e.file_name().to_string_lossy().ends_with(".bars"))
+        .filter_map(|e| Some((date_ns(&e.metadata().ok()?), e.path())))
+        .collect();
+    l.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, p) in l.into_iter().skip(3) {
+        if p != cible {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    Ok(cible)
+}
+
+/// La réponse d'erreur de Firehouse pour le fichier de musique (HEAD ou GET : mêmes règles `X-Code`).
+fn musiques_selon_code(statut: u16, code: Option<&str>, note_couverte: bool, hors_ligne: Musiques) -> Musiques {
+    let retirer = |r: &str| Musiques::Retirer { raison: Some(r.to_string()) };
+    match (statut, code) {
+        (_, Some("conflit")) => retirer(RAISON_MUSIQUES_CONFLIT),
+        (_, Some("original_absent")) if note_couverte => Musiques::Garder { raison: Some(RAISON_MUSIQUES_ORIGINAL_ABSENT.into()), maj: None },
+        (_, Some("original_absent")) => retirer(RAISON_MUSIQUES_ORIGINAL_ABSENT_RIEN),
+        (_, Some("introuvable")) | (404, _) => retirer(RAISON_MUSIQUES_INTROUVABLE),
+        (s, _) if s == 401 || s >= 500 => hors_ligne,
+        _ => retirer(RAISON_MUSIQUES_REPONSE),
+    }
+}
+
+/// Décide des musiques au lancement (rien n'est écrit chez l'émulateur ; le fichier peut arriver dans le cache, en
+/// `d.budget` au plus, et seulement avec l'accord de la personne).
+pub async fn resoudre_musiques(d: DemandeMusiques<'_>) -> DecisionMusiques {
+    let mut journal: Vec<String> = Vec::new();
+    let actives = d.ensemble.len();
+    let fin = |action: Musiques, journal: Vec<String>| DecisionMusiques { action, actives, a_taire: d.a_taire.clone(), ensemble: d.ensemble.clone(), journal };
+    let retirer = |r: &str| Musiques::Retirer { raison: Some(r.to_string()) };
+    if d.ensemble.is_empty() {
+        return fin(Musiques::Retirer { raison: None }, journal);
+    }
+    if let Some(r) = raison_version_musiques(d.servie.as_ref(), None, d.utilisee) {
+        journal.push("version du jeu pas celle des musiques".into());
+        return fin(Musiques::Retirer { raison: Some(r) }, journal);
+    }
+    let u = u64::from(d.utilisee.unwrap_or_default());
+    let note = lire_note_musiques(d.dossier_jeu).ok().flatten();
+    // Hors ligne (ou Firehouse ne peut rien dire) : le même ensemble, la même version → gardé ; sinon retiré.
+    let hors_ligne = if note.as_ref().is_some_and(|n| n.cles == d.ensemble && n.version == u) {
+        Musiques::Garder { raison: None, maj: None }
+    } else {
+        retirer(RAISON_MUSIQUES_HORS_LIGNE)
+    };
+    // Rien de ce qui est posé ne doit venir d'un mod que ce profil n'a pas actif (un mod réservé d'un autre profil).
+    let note_couverte = note.as_ref().is_some_and(|n| n.version == u && n.cles.iter().all(|c| d.ensemble.contains(c)));
+    let route = route_bgm_bars(d.base, &d.ensemble);
+    let Some(source) = d.source else {
+        journal.push("pas de session : comme hors ligne".into());
+        return fin(hors_ligne, journal);
+    };
+    let t = match source.tete_bgm_bars(&route).await {
+        Ok(t) => t,
+        Err(_) => {
+            journal.push("Firehouse injoignable (HEAD)".into());
+            return fin(hors_ligne, journal);
+        }
+    };
+    if !(200..300).contains(&t.statut) {
+        journal.push(format!("HEAD {} {}", t.statut, t.code.as_deref().unwrap_or("-")));
+        return fin(musiques_selon_code(t.statut, t.code.as_deref(), note_couverte, hors_ligne), journal);
+    }
+    let sha = t.sha256.clone().unwrap_or_default();
+    let taille = t.taille.filter(|n| *n > 0);
+    let (Some(vj), true) = (t.version_jeu, sha_valide(&sha)) else {
+        journal.push("HEAD incomplet".into());
+        return fin(retirer(RAISON_MUSIQUES_REPONSE), journal);
+    };
+    journal.push(format!("fichier {} ({}, version {vj})", &sha[..12], taille.map_or("taille pas dite".to_string(), |n| format!("{n} octets"))));
+    if let Some(r) = raison_version_musiques(d.servie.as_ref(), Some(vj), d.utilisee) {
+        return fin(Musiques::Retirer { raison: Some(r) }, journal);
+    }
+    let poser = |fichier: PathBuf| {
+        let n = std::fs::metadata(&fichier).map(|m| m.len()).unwrap_or(0);
+        Musiques::Poser { fichier, sha256: sha.clone(), taille: n, version: vj, cles: d.ensemble.clone() }
+    };
+    if let Some(f) = cache_valide(d.stock, &sha, taille).await {
+        journal.push("pris dans le cache".into());
+        return fin(poser(f), journal);
+    }
+    if note.as_ref().is_some_and(|n| n.sha256.eq_ignore_ascii_case(&sha)) {
+        return fin(Musiques::Garder { raison: None, maj: Some((d.ensemble.clone(), vj)) }, journal);
+    }
+    // Jamais sans un oui : l'accord noté couvre cet ensemble et cette version, ou « mettre à jour les mods tout seul ».
+    if !d.auto && !accord_couvre(d.stock, &d.ensemble, vj) {
+        journal.push("pas d'accord pour ces musiques : pas téléchargé".into());
+        return fin(Musiques::Retirer { raison: Some(raison_musiques_a_preparer(taille.or_else(|| derniere_taille_musiques(d.stock)))) }, journal);
+    }
+    match tokio::time::timeout(d.budget, telecharger_bgm(source, d.stock, &route, &sha, taille)).await {
+        Err(_) => {
+            journal.push("téléchargement pas fini à temps (repris la prochaine fois)".into());
+            fin(retirer(RAISON_MUSIQUES_PROCHAINE), journal)
+        }
+        Ok(Ok(f)) => {
+            journal.push("téléchargé".into());
+            fin(poser(f), journal)
+        }
+        Ok(Err(Erreur::Reseau(_) | Erreur::Serveur(_))) => {
+            journal.push("téléchargement interrompu".into());
+            fin(hors_ligne, journal)
+        }
+        Ok(Err(Erreur::Refus(m))) if m.contains("déjà en train de changer") => {
+            journal.push("téléchargement déjà en cours".into());
+            fin(retirer(RAISON_MUSIQUES_OCCUPE), journal)
+        }
+        // Le GET refusé après un HEAD réussi : les mêmes règles `X-Code` (relues par un HEAD, le refus du GET ne
+        // garde que son texte).
+        Ok(Err(Erreur::Conflit(_) | Erreur::Introuvable(_))) => match source.tete_bgm_bars(&route).await {
+            Ok(t2) if !(200..300).contains(&t2.statut) => {
+                journal.push(format!("GET refusé, HEAD {} {}", t2.statut, t2.code.as_deref().unwrap_or("-")));
+                fin(musiques_selon_code(t2.statut, t2.code.as_deref(), note_couverte, hors_ligne), journal)
+            }
+            _ => {
+                journal.push("GET refusé".into());
+                fin(retirer(RAISON_MUSIQUES_REPONSE), journal)
+            }
+        },
+        Ok(Err(_)) => {
+            journal.push("téléchargement refusé".into());
+            fin(retirer(RAISON_MUSIQUES_REPONSE), journal)
+        }
+    }
+}
+
+/// Précharge le fichier de musique de l'ensemble actif dans le cache (hors partie, APRÈS le oui de la personne, noté
+/// par `noter_accord_musiques`) : rend `Ok(Some(taille))` s'il est dans le cache, `Ok(None)` s'il n'y a rien à préparer
+/// (pas de musique, version qui ne va pas, Firehouse qui refuse). Une panne de réseau remonte (ce sera au lancement).
+pub async fn precharger_musiques(source: &crate::source::Source, stock: &Path, base: u64, ensemble: &Ensemble, utilisee: Option<u32>, servie: Option<&VersionServie>) -> Resultat<Option<u64>> {
+    if ensemble.is_empty() || raison_version_musiques(servie, None, utilisee).is_some() {
+        return Ok(None);
+    }
+    let route = route_bgm_bars(base, ensemble);
+    let t = source.tete_bgm_bars(&route).await?;
+    let (Some(sha), Some(vj)) = (t.sha256.clone(), t.version_jeu) else { return Ok(None) };
+    if !(200..300).contains(&t.statut) || !sha_valide(&sha) || raison_version_musiques(servie, Some(vj), utilisee).is_some() {
+        return Ok(None);
+    }
+    let f = telecharger_bgm(source, stock, &route, &sha, t.taille).await?;
+    Ok(std::fs::metadata(f).ok().map(|m| m.len()))
+}
+
+/// La taille du fichier de musique pour cet ensemble, à annoncer dans l'accord : lue par le HEAD (5 s), sinon celle du
+/// dernier fichier connu de ce jeu. `None` : rien de connu.
+pub async fn taille_musiques(source: Option<&crate::source::Source>, stock: &Path, base: u64, ensemble: &Ensemble) -> Option<u64> {
+    if ensemble.is_empty() {
+        return None;
+    }
+    if let Some(s) = source {
+        if let Ok(t) = s.tete_bgm_bars(&route_bgm_bars(base, ensemble)).await {
+            if (200..300).contains(&t.statut) {
+                if let Some(n) = t.taille.filter(|n| *n > 0) {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    derniere_taille_musiques(stock)
+}
+
+/// Ce qu'il faut faire dans le dossier commun (calculé sans rien écrire).
+#[derive(Debug, Clone, PartialEq)]
+pub enum EtapeMusiques {
+    Rien,
+    /// Créer le dossier commun avec ce fichier.
+    Poser,
+    /// Remplacer le BGM.bars du dossier commun (à Frogtend).
+    Remplacer,
+    /// Retirer le dossier commun (à Frogtend).
+    Retirer,
+    /// Seulement réécrire (ou oublier) la note.
+    Note(Option<NoteMusiques>),
+    /// Le dossier n'est pas (ou plus) ce que Frogtend y a mis : il n'est jamais touché (raison).
+    Garde(String),
+}
+
+/// Le plan des musiques pour un dossier de mods d'un émulateur.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanMusiques {
+    pub etape: EtapeMusiques,
+    /// Après ce plan, le fichier commun de Frogtend sera-t-il en place (et actif) ? Alors le BGM.bars d'un mod est sauté.
+    pub en_place: bool,
+}
+
+impl PlanMusiques {
+    /// Le plan change-t-il ce que l'émulateur chargera (parties à mettre à l'abri d'abord) ?
+    pub fn change(&self) -> bool {
+        matches!(self.etape, EtapeMusiques::Poser | EtapeMusiques::Remplacer | EtapeMusiques::Retirer)
+    }
+}
+
+/// Le chemin relatif du provisoire d'une pose (dans le dossier commun).
+fn chemin_provisoire() -> String {
+    format!("romfs/Audio/Static/{PROVISOIRE_BGM}")
+}
+
+/// Le relevé du dossier commun, sans le provisoire d'une pose interrompue (un fichier de Frogtend, à son nom).
+fn releve_musiques(d: &Path) -> std::io::Result<BTreeMap<String, (u64, u64)>> {
+    let mut r = releve(d)?;
+    r.retain(|f, _| !f.rsplit('/').next().is_some_and(|n| n == PROVISOIRE_BGM));
+    Ok(r)
+}
+
+/// Le dossier commun est-il à Frogtend ? (`exact` : le relevé noté ; `a_nous` : exact, OU une pose ou un retrait
+/// interrompus — rien d'autre que le BGM.bars, au sha noté ou ATTENDU, et le provisoire.)
+fn dossier_musiques_a_nous(d: &Path, note: Option<&NoteMusiques>) -> (bool, bool) {
+    let Some(n) = note else { return (false, false) };
+    if releve_musiques(d).is_ok_and(|r| r == n.fichiers) {
+        return (true, true);
+    }
+    let Ok(l) = fichiers_du_dossier(d) else { return (false, false) };
+    let provisoire = chemin_provisoire();
+    if !l.iter().all(|f| est_chemin_bgm(f) || f.eq_ignore_ascii_case(&provisoire)) {
+        return (false, false);
+    }
+    let ok = match l.iter().find(|f| est_chemin_bgm(f)) {
+        None => true,
+        Some(b) => sha256_de(&d.join(b.replace('/', "\\"))).is_ok_and(|s| s.eq_ignore_ascii_case(&n.sha256) || n.en_cours.as_deref().is_some_and(|e| s.eq_ignore_ascii_case(e))),
+    };
+    (false, ok)
+}
+
+/// Calcule ce qu'il faut faire du dossier commun d'après la décision (rien n'est écrit).
+pub fn planifier_musiques(dossier_jeu: &Path, m: &Musiques) -> PlanMusiques {
+    let d = dossier_jeu.join(DOSSIER_MUSIQUES);
+    let existe = d.exists();
+    let plan = |etape, en_place| PlanMusiques { etape, en_place };
+    if *m == Musiques::Ignorer {
+        return plan(EtapeMusiques::Rien, false);
+    }
+    let note = match lire_note_musiques(dossier_jeu) {
+        Ok(n) => n,
+        Err(()) if existe => return plan(EtapeMusiques::Garde(format!("la note du dossier « {DOSSIER_MUSIQUES} » ne se lit pas : Frogtend n'y touche pas")), false),
+        Err(()) => None,
+    };
+    let (exact, a_nous) = if existe { dossier_musiques_a_nous(&d, note.as_ref()) } else { (false, false) };
+    let modifie = || EtapeMusiques::Garde(format!("le dossier « {DOSSIER_MUSIQUES} » a été modifié (ou n'est pas à Frogtend) : Frogtend n'y touche pas"));
+    let oublier = |note: &Option<NoteMusiques>| if note.is_some() { EtapeMusiques::Note(None) } else { EtapeMusiques::Rien };
+    // La note à garder quand le fichier reste le même (l'ensemble ou la version notés suivent ; plus de pose en cours).
+    let suivre = |n: &NoteMusiques, maj: Option<(Ensemble, u64)>| {
+        let mut nouvelle = NoteMusiques { en_cours: None, ..n.clone() };
+        if let Some((c, v)) = maj {
+            nouvelle.cles = c;
+            nouvelle.version = v;
+        }
+        if nouvelle != *n { EtapeMusiques::Note(Some(nouvelle)) } else { EtapeMusiques::Rien }
+    };
+    match m {
+        Musiques::Ignorer => plan(EtapeMusiques::Rien, false),
+        Musiques::Retirer { .. } => {
+            if a_nous {
+                plan(EtapeMusiques::Retirer, false)
+            } else if existe {
+                plan(modifie(), false)
+            } else {
+                plan(oublier(&note), false)
+            }
+        }
+        Musiques::Garder { maj, .. } => match note.as_ref() {
+            Some(n) if exact => plan(suivre(n, maj.clone()), true),
+            // Une pose interrompue : on ne sait pas ce qui est en place, retiré (à Frogtend).
+            _ if a_nous => plan(EtapeMusiques::Retirer, false),
+            _ if existe => plan(modifie(), false),
+            _ => plan(oublier(&note), false),
+        },
+        Musiques::Poser { sha256, version, cles, .. } => match note.as_ref() {
+            Some(n) if exact && n.sha256.eq_ignore_ascii_case(sha256) => plan(suivre(n, Some((cles.clone(), *version))), true),
+            _ if a_nous => plan(EtapeMusiques::Remplacer, true),
+            _ if existe => plan(modifie(), false),
+            _ => plan(EtapeMusiques::Poser, true),
+        },
+    }
+}
+
+/// Copie `source` en `cible` sans jamais laisser de BGM.bars à moitié écrit : copie dans un provisoire du MÊME dossier,
+/// taille et sha256 vérifiés, `avant` (noter le sha attendu), puis renommage par-dessus.
+fn poser_bgm_atomique(source: &Path, cible: &Path, sha256: &str, taille: u64, avant: &dyn Fn() -> Resultat<()>) -> Resultat<()> {
+    let dossier = cible.parent().ok_or_else(|| Erreur::Disque("dossier de musique inattendu".into()))?;
+    std::fs::create_dir_all(dossier)?;
+    let tmp = dossier.join(PROVISOIRE_BGM);
+    let r = (|| -> Resultat<()> {
+        std::fs::copy(source, &tmp)?;
+        if std::fs::metadata(&tmp)?.len() != taille || !sha256_de(&tmp)?.eq_ignore_ascii_case(sha256) {
+            return Err(Erreur::Disque("les musiques copiées ne se relisent pas comme prévu".into()));
+        }
+        avant()?;
+        std::fs::rename(&tmp, cible)?;
+        Ok(())
+    })();
+    if r.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    r
+}
+
+/// Ce que la pose des musiques a fait.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FaitMusiques {
+    /// « posé », « remplacé », « retiré », « gardé », « inchangé », « note », « laissé », « raté ».
+    pub fait: &'static str,
+    /// Le dossier commun de Frogtend est en place (à mettre dans mods.json / à ne pas couper dans Eden).
+    pub en_place: bool,
+    /// Le dossier commun est parti (pour défaire sa mention dans l'émulateur).
+    pub parti: Option<PathBuf>,
+    pub raison: Option<String>,
+}
+
+/// Exécute le plan des musiques dans `dossier_jeu` (APRÈS l'abri des parties). Le sha attendu est noté AVANT chaque
+/// renommage, la note finale après ; un échec ne laisse jamais un BGM.bars à moitié écrit.
+pub fn executer_musiques(dossier_jeu: &Path, plan: &PlanMusiques, m: &Musiques) -> Resultat<FaitMusiques> {
+    let d = dossier_jeu.join(DOSSIER_MUSIQUES);
+    let mut f = FaitMusiques { fait: "inchangé", en_place: plan.en_place, parti: None, raison: None };
+    match &plan.etape {
+        EtapeMusiques::Rien => {
+            if plan.en_place {
+                f.fait = "gardé";
+            }
+        }
+        EtapeMusiques::Garde(r) => {
+            f.fait = "laissé";
+            f.raison = Some(r.clone());
+        }
+        EtapeMusiques::Note(n) => {
+            ecrire_note_musiques(dossier_jeu, n.as_ref())?;
+            f.fait = if n.is_some() { "gardé" } else { "note" };
+        }
+        EtapeMusiques::Retirer => {
+            std::fs::remove_dir_all(&d)?;
+            ecrire_note_musiques(dossier_jeu, None)?;
+            f.fait = "retiré";
+            f.parti = Some(d);
+        }
+        EtapeMusiques::Poser | EtapeMusiques::Remplacer => {
+            let Musiques::Poser { fichier, sha256, taille, version, cles } = m else {
+                return Err(Erreur::Disque("plan des musiques sans fichier".into()));
+            };
+            // Le sha ATTENDU, noté avant le renommage (la note d'avant est gardée pour le reste).
+            let attendu = || -> Resultat<()> {
+                let n = lire_note_musiques(dossier_jeu).ok().flatten().unwrap_or_default();
+                ecrire_note_musiques(dossier_jeu, Some(&NoteMusiques { en_cours: Some(sha256.to_ascii_lowercase()), ..n }))
+            };
+            if plan.etape == EtapeMusiques::Remplacer {
+                poser_bgm_atomique(fichier, &d.join(CHEMIN_BGM.replace('/', "\\")), sha256, *taille, &attendu)?;
+                f.fait = "remplacé";
+            } else {
+                // Un dossier NEUF : préparé à côté du dossier du jeu (un nom qui n'est pas un title id, jamais lu comme
+                // un mod), puis renommé à sa place d'un coup.
+                std::fs::create_dir_all(dossier_jeu)?;
+                let parent = dossier_jeu.parent().ok_or_else(|| Erreur::Disque("dossier des mods inattendu".into()))?;
+                let tid = dossier_jeu.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let base = format!("{PREFIXE_COPIE}{tid}-musiques");
+                let mut tmp = parent.join(&base);
+                let mut n = 2;
+                while tmp.exists() {
+                    if tmp.join(MARQUE_COPIE).is_file() {
+                        std::fs::remove_dir_all(&tmp)?;
+                        break;
+                    }
+                    tmp = parent.join(format!("{base}-{n}"));
+                    n += 1;
+                }
+                std::fs::create_dir_all(&tmp)?;
+                std::fs::write(tmp.join(MARQUE_COPIE), b"")?;
+                let r = poser_bgm_atomique(fichier, &tmp.join(CHEMIN_BGM.replace('/', "\\")), sha256, *taille, &|| Ok(()))
+                    .and_then(|_| Ok(std::fs::remove_file(tmp.join(MARQUE_COPIE))?))
+                    .and_then(|_| attendu())
+                    .and_then(|_| Ok(std::fs::rename(&tmp, &d)?));
+                if let Err(e) = r {
+                    let _ = std::fs::remove_dir_all(&tmp);
+                    return Err(e);
+                }
+                f.fait = "posé";
+            }
+            let note = NoteMusiques {
+                cles: cles.clone(),
+                version: *version,
+                sha256: sha256.to_ascii_lowercase(),
+                taille: *taille,
+                fichiers: releve_musiques(&d)?,
+                en_cours: None,
+            };
+            ecrire_note_musiques(dossier_jeu, Some(&note))?;
+        }
+    }
+    Ok(f)
+}
+
+/// La ligne des musiques pour la fiche (et la dernière pose).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LigneMusiques {
+    /// Combien de mods de musique actifs pour le profil qui a lancé.
+    pub actives: usize,
+    /// Le fichier commun est en place pour cette partie.
+    pub en_place: bool,
+    /// Pourquoi il ne l'est pas (mots simples, jamais un nom de mod).
+    pub raison: Option<String>,
+    /// Ce qui a été fait (« posé », « retiré »…), pour le journal.
+    #[serde(default)]
+    pub fait: String,
+    /// Les clés des mods RÉSERVÉS parmi les musiques : la ligne n'est montrée qu'au profil qui les voit tous ; jamais
+    /// envoyées à l'interface (`DernierePose::pour_le_profil` les retire).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reservees: Vec<String>,
+    /// L'ensemble de cette partie (comparé à l'ensemble actif pour la fiche) ; jamais envoyé à l'interface.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ensemble: Ensemble,
+}
+
+/// La ligne de la fiche d'après la décision et ce qui a été fait.
+fn ligne_musiques(d: &DecisionMusiques, f: Option<&FaitMusiques>) -> Option<LigneMusiques> {
+    let raison_decision = match &d.action {
+        Musiques::Retirer { raison } | Musiques::Garder { raison, .. } => raison.clone(),
+        _ => None,
+    };
+    let en_place = f.is_some_and(|f| f.en_place);
+    if d.actives == 0 && !en_place && f.is_none_or(|f| f.fait == "inchangé" || f.fait == "note") {
+        return None;
+    }
+    Some(LigneMusiques {
+        actives: d.actives,
+        en_place,
+        raison: f.and_then(|f| f.raison.clone()).or(raison_decision),
+        fait: f.map(|f| f.fait.to_string()).unwrap_or_default(),
+        reservees: d.a_taire.clone(),
+        ensemble: d.ensemble.clone(),
+    })
+}
+
+/// La ligne du journal (commun à la maison) : des NOMBRES, l'état et un sha tronqué — jamais une clé, une amorce ni
+/// un titre. Avec un mod réservé parmi les musiques, même leur nombre se tait.
+pub fn ligne_journal_musiques(d: &DecisionMusiques, b: &BilanMods) -> Option<String> {
+    let l = b.musiques.as_ref();
+    if l.is_none() && b.bgm_sautes == 0 && d.journal.is_empty() {
+        return None;
+    }
+    let mut m = vec![if d.a_taire.is_empty() { format!("{} mod(s) de musique actif(s)", d.actives) } else { "des mods de musique actifs".to_string() }];
+    if let Some(l) = l {
+        if !l.fait.is_empty() {
+            m.push(format!("fichier commun {}", l.fait));
+        }
+    }
+    m.extend(d.journal.iter().cloned());
+    if b.bgm_sautes > 0 {
+        m.push(format!("{} fichier(s) de musique d'un mod sauté(s) (le fichier commun gagne)", b.bgm_sautes));
+    }
+    Some(m.join(" ; "))
+}
+
+/// Les musiques dans la pose d'un émulateur : APRÈS `synchroniser` (abri fait), AVANT la liste de l'émulateur. Rend ce
+/// qui a été fait (`None` : rien n'a changé dans les dossiers, la pose d'avant reste).
+fn poser_les_musiques(dossier_jeu: &Path, plan: &PlanMusiques, d: &DecisionMusiques, r: &mut BilanMods) -> Option<FaitMusiques> {
+    if r.inchange {
+        if plan.change() {
+            r.musiques = Some(LigneMusiques {
+                actives: d.actives,
+                en_place: false,
+                raison: Some("les mods n'ont pas pu être changés : les musiques non plus".into()),
+                fait: "inchangé".into(),
+                reservees: d.a_taire.clone(),
+                ensemble: vec![],
+            });
+        }
+        return None;
+    }
+    let f = match executer_musiques(dossier_jeu, plan, &d.action) {
+        Ok(f) => f,
+        Err(e) => {
+            // Le fichier d'avant (s'il est à Frogtend) ne doit pas rester pour une autre version ou un autre choix de
+            // mods : retiré, la partie se joue avec les musiques d'origine.
+            let retrait = planifier_musiques(dossier_jeu, &Musiques::Retirer { raison: None });
+            let parti = executer_musiques(dossier_jeu, &retrait, &Musiques::Retirer { raison: None }).ok().and_then(|x| x.parti);
+            FaitMusiques { fait: "raté", en_place: false, parti, raison: Some(format!("les musiques des mods n'ont pas pu être posées ({e}) : {MUSIQUES_D_ORIGINE}")) }
+        }
+    };
+    r.musiques = ligne_musiques(d, Some(&f));
+    Some(f)
 }
 
 // --- Le contrôle avant de lancer : aucun mod d'un autre profil ne doit rester chargé ---
@@ -1770,6 +2738,15 @@ fn cles_masquees(stock: &Path, liste: Option<&ListeMods>) -> Vec<String> {
 fn masque_charge(dossier_jeu: &Path, masques: &[String], coupe: &dyn Fn(&str) -> bool, emulateur: &str) -> Option<String> {
     if masques.is_empty() {
         return None;
+    }
+    // Contrat 1.55 : le fichier de musique commun fait avec un mod que ce profil ne voit pas, encore en place.
+    let musiques = dossier_jeu.join(DOSSIER_MUSIQUES);
+    if musiques.exists() && !coupe(DOSSIER_MUSIQUES) {
+        match lire_note_musiques(dossier_jeu) {
+            Err(()) => return Some(message_note_illisible(emulateur)),
+            Ok(Some(n)) if n.cles.iter().any(|(c, _)| masques.contains(c)) => return Some(message_masque_en_place(emulateur)),
+            _ => {}
+        }
     }
     let Some(note) = lire_note(dossier_jeu) else { return dossier_jeu.exists().then(|| message_note_illisible(emulateur)) };
     note.iter()
@@ -1933,6 +2910,9 @@ pub struct ModVu {
     #[serde(rename = "type")]
     pub type_mod: Option<String>,
     pub interet: Option<u8>,
+    /// Contrat 1.55 : les amorces (non vides : un mod de musique), pour voir à l'allumage si deux mods de musique veulent
+    /// la même. La liste vue est celle du profil qui regarde : un mod réservé qu'il ne voit pas n'y est jamais.
+    pub amorces: Vec<String>,
 }
 
 /// La liste vue sur la fiche.
@@ -1949,6 +2929,50 @@ pub struct ListeVue {
     pub remarque: Option<String>,
     /// Ce que la dernière pose dans un émulateur a dit (mod pas posé et pourquoi, abri impossible…), à montrer.
     pub derniere_pose: Option<DernierePose>,
+    /// Contrat 1.55 : les musiques des mods de ce profil (combien, et pourquoi elles ne seront pas posées si la version
+    /// ne va pas), et la taille du dernier fichier de musique connu (pour l'accord).
+    pub musiques: Option<ApercuMusiques>,
+}
+
+/// Ce que la fiche sait des musiques avant la partie.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct ApercuMusiques {
+    pub actives: usize,
+    pub raison: Option<String>,
+    pub taille_connue: Option<u64>,
+    /// La dernière partie avait EXACTEMENT ces mods de musique (clés et révisions) : sa ligne vaut encore. Jamais de clé
+    /// envoyée à l'interface.
+    pub meme_ensemble: bool,
+    /// Des musiques sont à préparer (aucun oui noté pour cet ensemble et cette version, pas de « tout seul », rien de
+    /// posé qui corresponde) : le bouton « 🎵 Préparer les musiques » se montre.
+    pub a_preparer: bool,
+}
+
+/// L'aperçu des musiques pour la fiche (rien n'est demandé à Firehouse ; `derniere` : la dernière pose, AVANT
+/// `pour_le_profil` ; `auto` : « mettre à jour les mods tout seul »).
+pub fn apercu_musiques(donnees: &Path, stock: &Path, base: u64, utilisee: Option<u32>, liste: Option<&ListeMods>, derniere: Option<&DernierePose>, auto: bool) -> Option<ApercuMusiques> {
+    let (e, _, servie) = ensemble_du_profil(donnees, stock, base, utilisee, liste);
+    let taille_connue = derniere_taille_musiques(stock);
+    if e.is_empty() && taille_connue.is_none() {
+        return None;
+    }
+    let raison = if e.is_empty() { None } else { raison_version_musiques(servie.as_ref(), None, utilisee) };
+    let avant = derniere.and_then(|d| d.musiques.as_ref());
+    let meme_ensemble = !e.is_empty() && avant.is_some_and(|m| m.ensemble == e);
+    let deja_pose = meme_ensemble && avant.is_some_and(|m| m.en_place);
+    let accorde = servie.as_ref().and_then(|s| s.version).is_some_and(|v| accord_couvre(stock, &e, v));
+    let a_preparer = !e.is_empty() && raison.is_none() && !auto && !deja_pose && !accorde;
+    Some(ApercuMusiques { actives: e.len(), raison, taille_connue, meme_ensemble, a_preparer })
+}
+
+/// « Mettre à jour les mods tout seul » (`modsSwitch.auto`) dans les réglages du profil (`profils/<id>.json`, écrits par
+/// l'interface : `{"reglages": {...}}`) ; illisible ou absent : non.
+pub fn auto_du_profil(donnees: &Path, profil: &str) -> bool {
+    std::fs::read(donnees.join("profils").join(format!("{profil}.json")))
+        .ok()
+        .and_then(|o| serde_json::from_slice::<Value>(&o).ok())
+        .and_then(|v| v["reglages"]["modsSwitch"]["auto"].as_bool())
+        .unwrap_or(false)
 }
 
 /// Construit la liste vue : les mods servis (lus) et les mods rangés sur ce PC, avec leur état et leur compatibilité
@@ -1987,6 +3011,7 @@ pub fn liste_vue(lecture: &Lecture, rangs: &[ManifesteMod], choix: &crate::conte
             servi: true,
             type_mod: m.type_mod.clone(),
             interet: m.interet,
+            amorces: m.amorces.clone(),
         });
     }
     // Un mod rangé RÉSERVÉ (« adulte ») que la liste de CE profil ne contient pas : écarté, jamais montré (pas même
@@ -2017,6 +3042,7 @@ pub fn liste_vue(lecture: &Lecture, rangs: &[ManifesteMod], choix: &crate::conte
             servi: false,
             type_mod: r.type_mod.clone(),
             interet: r.interet,
+            amorces: r.amorces.clone(),
         });
     }
     // Les plus intéressants d'abord (`interet` décroissant, sans fiche en dernier), puis par nom.
@@ -2030,12 +3056,25 @@ pub fn liste_vue(lecture: &Lecture, rangs: &[ManifesteMod], choix: &crate::conte
         mods,
         remarque: None,
         derniere_pose: None,
+        musiques: None,
     }
 }
 
 /// Trie la liste vue : `interet` décroissant (sans fiche en dernier), puis par nom (sans casse).
 pub fn trier_par_interet(mods: &mut [ModVu]) {
     mods.sort_by(|a, b| b.interet.unwrap_or(0).cmp(&a.interet.unwrap_or(0)).then_with(|| a.nom.to_lowercase().cmp(&b.nom.to_lowercase())));
+}
+
+/// Deux mods rangés vont-ils ensemble ? Non s'ils se déclarent en conflit (dans un sens ou dans l'autre), ou si ce
+/// sont deux mods de MUSIQUE qui veulent la même amorce (contrat 1.55 : Firehouse répondrait `conflit` ; vu ici, à
+/// l'allumage, jamais au milieu d'un lancement).
+pub fn en_conflit(a: &ManifesteMod, b: &ManifesteMod) -> bool {
+    a.conflits.contains(&b.cle) || b.conflits.contains(&a.cle) || amorces_communes(&a.amorces, &b.amorces)
+}
+
+/// Deux listes d'amorces ont-elles une entrée en commun ?
+pub fn amorces_communes(a: &[String], b: &[String]) -> bool {
+    a.iter().any(|x| b.contains(x))
 }
 
 /// Allumer `cle` est-il refusé par un conflit avec un mod rangé ALLUMÉ (dans un sens ou dans l'autre) ? `sauf` : le
@@ -2051,9 +3090,11 @@ pub fn conflit_pour(tous: &[ManifesteMod], vus: &[String], choix: &crate::conten
     let a = tous.iter().find(|m| m.cle == cle)?;
     tous.iter()
         .filter(|b| b.cle != cle && Some(b.cle.as_str()) != sauf && choix.mod_actif(&b.cle))
-        .find(|b| a.conflits.contains(&b.cle) || b.conflits.contains(&a.cle))
+        .find(|b| en_conflit(a, b))
         .map(|b| {
-            if vus.contains(&b.cle) {
+            if vus.contains(&b.cle) && amorces_communes(&a.amorces, &b.amorces) {
+                format!("« {} » et « {} » changent la même musique du jeu : il faut éteindre « {} » pour allumer celui-ci.", a.nom, b.nom, b.nom)
+            } else if vus.contains(&b.cle) {
                 format!("« {} » ne va pas avec « {} », déjà allumé : il faut l'éteindre pour allumer celui-ci.", a.nom, b.nom)
             } else {
                 format!("« {} » ne va pas avec un autre mod allumé sur ce PC : il ne peut pas être allumé pour l'instant.", a.nom)

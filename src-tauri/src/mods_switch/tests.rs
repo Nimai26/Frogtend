@@ -426,6 +426,7 @@ fn un_conflit_refuse_d_allumer_sauf_si_l_autre_s_eteint_en_meme_temps() {
         interet: None,
         public: None,
         adulte_vu: false,
+        amorces: vec![],
     };
     let rangs = vec![man(CLE, "1080p", &[CLE2]), man(CLE2, "Haute résolution", &[])];
     let mut choix = crate::contenus_switch::ChoixJeu::default();
@@ -1708,3 +1709,6 @@ fn y5_les_raisons_d_un_mod_deja_vu_adulte_sont_tues_et_une_note_illisible_se_dit
     let msg = verifier_masques_eden(&eden, BASE, &stock, None).unwrap();
     assert!(msg.starts_with("Frogtend ne sait plus quels mods sont en place pour ce jeu"), "{msg}");
 }
+
+// Contrat 1.55 : les musiques de Mario Kart 8 Deluxe (`tests/musiques.rs`).
+mod musiques;

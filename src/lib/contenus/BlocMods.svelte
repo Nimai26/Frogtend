@@ -23,14 +23,25 @@
     conflitAvec,
     descriptionLongue,
     dureeEstimee,
+    amorcesCommunes,
+    estMusique,
     etapeModsAnnoncee,
+    libellePreparer,
+    messagePreparer,
+    musiquesQuiServiront,
+    nMods,
+    plusMusiques,
+    preparerVisible,
+    titrePreparer,
     ligneAuteur,
     ligneEtatListe,
     ligneProgresMods,
     ligneSorte,
     lignesDernierePose,
     lignesFinMods,
+    ligneMusiques,
     mentions,
+    messageAllumageMusique,
     messageFinMods,
     messageTelechargement,
     raisonGrise,
@@ -39,6 +50,7 @@
     resumeMods,
     texteInterrupteurMod,
     texteSimple,
+    titreAllumageMusique,
     titreTelechargement,
     totalOctets,
   } from './mods';
@@ -60,6 +72,10 @@
   let accordEnCours = $state(false);
   let basculement = $state<string | null>(null);
   let retrait = $state<string | null>(null);
+  /** Contrat 1.55 : la taille des musiques est demandée à Firehouse (5 s au plus). */
+  let regardeTaille = $state(false);
+  /** « 🎵 Préparer les musiques » en cours. */
+  let preparation = $state(false);
   /** Les descriptions dépliées (« Lire plus »). */
   let lus = $state<string[]>([]);
   /** Ce que le lecteur d'écran entend à la fin d'un téléchargement (« Mods téléchargés »). */
@@ -139,11 +155,15 @@
     if (cible) selectionner(cible);
   }
 
-  /** Met en file la liste que la personne a VUE : si elle a changé entre-temps, le cœur refuse et on la relit. */
-  async function telecharger(jeu: number, l: ModSwitchVu[], auto: boolean) {
+  /** Met en file la liste que la personne a VUE : si elle a changé entre-temps, le cœur refuse et on la relit.
+   * `musiques` (contrat 1.55) : la taille des musiques annoncée dans l'accord — le cœur note alors le oui et les prépare
+   * (sans taille annoncée, jamais). */
+  async function telecharger(jeu: number, l: ModSwitchVu[], auto: boolean, musiques: number | null = null) {
     try {
-      const n = await api.modsSwitchTelecharger(jeu, clesVues(l), totalOctets(l), auto);
-      if (auto && n) toast(`🧩 ${n} mod(s) de « ${titre} » se mettent à jour tout seuls (${taille(totalOctets(l))}), en arrière-plan.`);
+      const n = await (musiques && musiques > 0
+        ? api.modsSwitchTelecharger(jeu, clesVues(l), totalOctets(l), auto, musiques)
+        : api.modsSwitchTelecharger(jeu, clesVues(l), totalOctets(l), auto));
+      if (auto && n) toast(`🧩 ${nMods(n)} de « ${titre} » se ${n > 1 ? 'mettent' : 'met'} à jour tout seul${n > 1 ? 's' : ''} (${taille(totalOctets(l))}), en arrière-plan.`);
       if (jeu !== id) return;
       enFile = l.map((m) => m.cle);
       const su = await api.modsSwitchSuivi(jeu).catch(() => null);
@@ -171,14 +191,34 @@
     await relire();
   }
 
-  /** « ⬇ Télécharger (X Mo) » : l'accord chiffré (taille, durée si connue, toute la maison, abri des parties). */
+  /** Contrat 1.55 : la taille des musiques à annoncer (« + 41 Mo de musiques ») quand des mods de musique sont parmi
+   * `l` — lue chez Firehouse (5 s au plus ; « ⏳ Je regarde la taille des musiques… » pendant ce temps), sinon la
+   * dernière connue ; hors ligne, la dernière connue tout de suite. `eteindre` : le mod éteint en même temps. */
+  async function tailleMusiques(l: ModSwitchVu[], eteindre: string | null = null): Promise<number | null> {
+    const cles = l.filter(estMusique).map((m) => m.cle);
+    const connue = liste?.musiques?.taille_connue ?? null;
+    if (liste?.etat !== 'ok') return connue;
+    regardeTaille = true;
+    try {
+      return (await api.modsSwitchMusiquesTaille(id, cles, eteindre).catch(() => null)) ?? connue;
+    } finally {
+      regardeTaille = false;
+    }
+  }
+
+  /** « ⬇ Télécharger (X Mo) » : l'accord chiffré (taille, durée si connue, toute la maison, abri des parties ; un mod
+   * de musique qui servira annonce aussi les musiques). */
   async function proposer(m: ModSwitchVu) {
     if (occupe || bloque) return;
     accordEnCours = true;
     try {
       noterOrdre();
-      const oui = await confirmer(titreTelechargement([m], debitConnu()), { message: messageTelechargement([m]), libelleValider: '⬇ Télécharger' });
-      if (oui) await telecharger(id, [m], false);
+      const annonce = musiquesQuiServiront([m], mods).length ? { octets: await tailleMusiques([m]) } : null;
+      const oui = await confirmer(titreTelechargement([m], debitConnu(), false, annonce), {
+        message: messageTelechargement([m], false, annonce),
+        libelleValider: '⬇ Télécharger',
+      });
+      if (oui) await telecharger(id, [m], false, annonce?.octets ?? null);
     } finally {
       accordEnCours = false;
     }
@@ -193,22 +233,32 @@
     noterOrdre();
     try {
       const debit = debitConnu();
+      const servent = musiquesQuiServiront(vus, mods);
+      const mus = servent.length ? await tailleMusiques(servent) : null;
+      const annonce = servent.length ? { octets: mus } : null;
       const choisis = await cocher<string>(
         `🧩 Télécharger des mods pour « ${titre} » ?`,
         vus.map((m) => ({ valeur: m.cle, libelle: m.nom, detail: taille(m.taille) })),
         {
           coches: vus.map(() => true),
-          message: messageTelechargement(vus),
+          message: messageTelechargement(vus, false, annonce),
           resume: (v) => {
-            const t = totalOctets(vus.filter((m) => v.includes(m.cle)));
+            const choisis = vus.filter((m) => v.includes(m.cle));
+            const musique = choisis.some((m) => servent.includes(m));
+            // La taille des musiques vaut pour TOUS les mods de musique : des mods décochés, elle n'est qu'environ.
+            const environ = servent.some((m) => !choisis.includes(m));
+            const t = totalOctets(choisis) + (musique && mus ? mus : 0);
             const d = dureeEstimee(t, debit);
-            return `${v.length} mod(s), ${taille(t)}${d ? `, ${d}` : ''}`;
+            return `${nMods(v.length)}, ${taille(totalOctets(choisis))}${musique ? ` ${plusMusiques(mus, environ)}` : ''}${d ? `, ${d}` : ''}`;
           },
           refus: (v) => (v.length ? null : 'Coche au moins un mod.'),
           libelleValider: '⬇ Télécharger',
         },
       );
-      if (choisis?.length) await telecharger(id, vus.filter((m) => choisis.includes(m.cle)), false);
+      if (choisis?.length) {
+        const l = vus.filter((m) => choisis.includes(m.cle));
+        await telecharger(id, l, false, l.some((m) => servent.includes(m)) ? mus : null);
+      }
     } finally {
       accordEnCours = false;
     }
@@ -220,8 +270,9 @@
     if (occupe || bloque) return;
     accordEnCours = true;
     try {
+      const annonce = m.allume && estMusique(m) ? { octets: await tailleMusiques([m]) } : null;
       const c = await choisir<'oui' | 'auto' | 'non'>(
-        titreTelechargement([m], debitConnu(), true),
+        titreTelechargement([m], debitConnu(), true, annonce),
         [
           { valeur: 'oui', libelle: '⬇ Mettre à jour' },
           {
@@ -232,12 +283,12 @@
           },
           { valeur: 'non', libelle: 'Pas maintenant' },
         ],
-        messageTelechargement([m], true),
+        messageTelechargement([m], true, annonce),
       );
       if (c !== 'oui' && c !== 'auto') return;
       noterOrdre();
       if (c === 'auto') await reglerProfil('modsSwitch.auto', true);
-      await telecharger(id, [m], c === 'auto');
+      await telecharger(id, [m], c === 'auto', annonce?.octets ?? null);
     } finally {
       accordEnCours = false;
     }
@@ -248,7 +299,7 @@
   async function accordConflit(m: ModSwitchVu, b: ModSwitchVu): Promise<boolean> {
     return confirmer(`Ne va pas avec « ${b.nom} » : l’allumer éteint l’autre`, {
       message: [
-        `« ${m.nom} » et « ${b.nom} » ne peuvent pas marcher ensemble.`,
+        amorcesCommunes(m, b) ? `« ${m.nom} » et « ${b.nom} » changent la même musique du jeu.` : `« ${m.nom} » et « ${b.nom} » ne peuvent pas marcher ensemble.`,
         `Allumer « ${m.nom} » éteint « ${b.nom} », pour toute la maison.`,
         'Frogtend met tes parties de ce jeu à l’abri avant la prochaine partie.',
       ].join('\n'),
@@ -263,9 +314,23 @@
     const allume = !m.allume;
     try {
       let eteindre: string | null = null;
+      let musiques: number | null = null;
       if (allume) {
+        // Un conflit déclaré, ou deux mods de musique qui changent la même musique (contrat 1.55) : éteindre l'autre,
+        // ou renoncer.
         const b = conflitAvec(mods, m.cle);
-        if (b) {
+        if (estMusique(m)) {
+          // Un mod de musique : l'accord annonce la taille des musiques ; un conflit de musique se règle dans la MÊME
+          // fenêtre.
+          const musical = b && estMusique(b) && amorcesCommunes(m, b) ? b : null;
+          if (b && !musical) {
+            if (!(await accordConflit(m, b))) return;
+          }
+          if (b) eteindre = b.cle;
+          musiques = await tailleMusiques([m], eteindre);
+          const oui = await confirmer(titreAllumageMusique(m, musiques), { message: messageAllumageMusique(m, musiques, musical), libelleValider: 'Allumer' });
+          if (!oui) return;
+        } else if (b) {
           if (!(await accordConflit(m, b))) return;
           eteindre = b.cle;
         }
@@ -276,16 +341,19 @@
         });
         if (!oui) return;
       }
-      await enregistrer(m, allume, eteindre);
+      await enregistrer(m, allume, eteindre, musiques);
       await relire();
     } finally {
       basculement = null;
     }
   }
 
-  async function enregistrer(m: ModSwitchVu, allume: boolean, eteindre: string | null) {
+  async function enregistrer(m: ModSwitchVu, allume: boolean, eteindre: string | null, musiques: number | null = null) {
     try {
-      const change = await api.modsSwitchChoisir(id, m.cle, allume, eteindre);
+      // La taille des musiques n'est donnée que si elle a été annoncée : le cœur note alors le oui et les prépare.
+      const change = await (musiques && musiques > 0
+        ? api.modsSwitchChoisir(id, m.cle, allume, eteindre, musiques)
+        : api.modsSwitchChoisir(id, m.cle, allume, eteindre));
       if (change) toast(`✅ « ${m.nom} » ${allume ? 'allumé' : 'éteint'} : tes parties de ce jeu seront mises à l’abri avant la prochaine partie.`);
     } catch (e) {
       // Un conflit que la liste affichée ne montrait pas (elle a changé) : relue, puis la même question.
@@ -293,11 +361,35 @@
         await relire();
         const b = conflitAvec(liste?.mods ?? [], m.cle);
         if (b) {
-          if (await accordConflit(m, b)) await enregistrer(m, true, b.cle);
+          if (await accordConflit(m, b)) await enregistrer(m, true, b.cle, musiques);
           return;
         }
       }
       toast(`Impossible d’enregistrer : ${texteSimple(motifDuRefus(e), false)}`, 'erreur');
+    }
+  }
+
+  /** « 🎵 Préparer les musiques (≈ N Mo) » : la taille relue, l'accord, puis le cœur note le oui et les prépare. */
+  async function preparer() {
+    if (bloque || preparation || !liste) return;
+    preparation = true;
+    try {
+      const octets = await tailleMusiques([]);
+      if (!octets) {
+        toast('🎵 La taille des musiques n’est pas encore connue (Firehouse ne répond pas) : rien n’est téléchargé. Réessaie plus tard.', 'alerte');
+        return;
+      }
+      const oui = await confirmer(titrePreparer(octets), { message: messagePreparer(liste), libelleValider: '🎵 Préparer' });
+      if (!oui) return;
+      try {
+        await api.modsSwitchMusiquesPreparer(id, octets);
+        toast('🎵 Les musiques des mods se préparent en arrière-plan.', 'ok');
+      } catch (e) {
+        toast(`Impossible de préparer les musiques : ${texteSimple(motifDuRefus(e), false)}`, 'erreur');
+      }
+      await relire();
+    } finally {
+      preparation = false;
     }
   }
 
@@ -359,6 +451,15 @@
     {#each lignesRemarque(liste.remarque) as l (l)}<p class="muted">{l}</p>{/each}
     <!-- Ce que la dernière partie a dit (un mod allumé pas mis en place, un abri impossible…) : toujours dit. -->
     {#each lignesDernierePose(pose) as l, i (i)}<p class={i ? 'muted' : ''}>{l}</p>{/each}
+    <!-- Contrat 1.55 : les musiques des mods (préparées par Firehouse), ou pourquoi elles ne sont pas posées ; le bouton
+         « Préparer » quand elles attendent un oui. -->
+    {#if ligneMusiques(liste)}<p>{ligneMusiques(liste)}</p>{/if}
+    <p class="muted" aria-live="polite">{regardeTaille ? '⏳ Je regarde la taille des musiques…' : ''}</p>
+    {#if preparerVisible(liste)}
+      <div class="actions">
+        <button class="btn petit" onclick={preparer} disabled={bloque || preparation || occupe || regardeTaille}>{libellePreparer(liste.musiques?.taille_connue)}</button>
+      </div>
+    {/if}
     <!-- Le lecteur d'écran n'annonce que l'ÉTAPE (le mod en cours) puis la fin, jamais le pourcentage qui bouge. -->
     <span class="annonce" aria-live="polite">{etapeModsAnnoncee(suivi) || annonceFin}</span>
     {#if ligneProgresMods(suivi)}<p>{ligneProgresMods(suivi)}</p>{/if}

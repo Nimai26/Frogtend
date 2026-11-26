@@ -6,6 +6,17 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎵 Musiques des mods de Mario Kart 8 Deluxe (0.229.0, contrat 1.55) — essai avec Seb
+- [ ] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe ▸ Mods : « DK Summit » ; l'allumer (ou le télécharger) : la
+      fenêtre annonce « + 39,1 Mo de musiques ». Oui.
+- [ ] 2. Lancer le jeu dans Ryubing (profil Sebastien) : il démarre ; l'agent vérifie le dossier « !Firehouse -
+      musiques » (fichier, taille, empreinte) et la version 3.0.1 lue.
+- [ ] 3. Faire une course sur SHERBET LAND (coupe Banane… ou par le menu) : c'est le circuit DK Summit, avec SA
+      musique dès la première seconde ; passer le « dernier tour » ; menus et résultats sans plantage.
+- [ ] 4. Fiche : « 🎵 Musiques de 1 mod, préparées par Firehouse ».
+- [ ] 5. Éteindre DK Summit, relancer : musique d'origine, le dossier « !Firehouse - musiques » a disparu.
+- [ ] 6. (Plus tard) La même chose dans Eden, et au canapé.
+
 ## ▶ Jeux GOG lancés sans Galaxy (0.228.0, lot C4c-1)
 - [x] 1. Mettre à jour, GOG Galaxy FERMÉ. Fiche de Cyberpunk : sous ▶ Jouer, la phrase « Lancé directement, sans GOG
       Galaxy… ». ▶ Jouer : le jeu démarre SANS l'écran noir du lanceur de CD Projekt, et Galaxy ne s'ouvre pas.

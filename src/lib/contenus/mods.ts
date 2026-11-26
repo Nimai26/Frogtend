@@ -162,11 +162,126 @@ export function raisonGrise(m: ModSwitchVu): string {
 }
 
 /** Le mod allumé avec lequel `cle` ne va pas (dans un sens ou dans l'autre), ou `null`. Même règle que le cœur
- * (`mods_switch::conflit`) : seuls les mods rangés et allumés comptent. */
+ * (`mods_switch::conflit` / `en_conflit`) : seuls les mods rangés et allumés comptent ; un conflit déclaré, ou deux
+ * mods de musique qui veulent changer la même musique (contrat 1.55 : vu ici, à l'allumage, jamais au lancement). */
 export function conflitAvec(l: ModSwitchVu[], cle: string): ModSwitchVu | null {
   const a = l.find((m) => m.cle === cle);
   if (!a) return null;
-  return l.find((b) => b.cle !== cle && b.allume && estInstalle(b) && (a.conflits.includes(b.cle) || b.conflits.includes(a.cle))) ?? null;
+  return (
+    l.find(
+      (b) => b.cle !== cle && b.allume && estInstalle(b) && (a.conflits.includes(b.cle) || b.conflits.includes(a.cle) || amorcesCommunes(a, b)),
+    ) ?? null
+  );
+}
+
+// --- Les musiques de Mario Kart 8 Deluxe (contrat 1.55, ✅ Seb 26/11 : les musiques ne se téléchargent jamais sans un
+// oui, leur taille annoncée) ---
+
+/** « 1 mod », « 2 mods ». */
+export function nMods(n: number): string {
+  return `${n} mod${s(n)}`;
+}
+
+/** Un mod « de musique » : il remplace des musiques du jeu (ses amorces ne sont pas vides). */
+export function estMusique(m: Pick<ModSwitchVu, 'amorces'>): boolean {
+  return (m.amorces?.length ?? 0) > 0;
+}
+
+/** Deux mods de musique veulent-ils changer la même musique ? */
+export function amorcesCommunes(a: Pick<ModSwitchVu, 'amorces'>, b: Pick<ModSwitchVu, 'amorces'>): boolean {
+  const lb = b.amorces ?? [];
+  return (a.amorces ?? []).some((x) => lb.includes(x));
+}
+
+/** Les mods de musique de `l` qui serviront vraiment : pas ceux qui arriveront éteints parce qu'un mod allumé de `tous`
+ * ne va pas avec eux (même règle que le cœur, `noter_arrivee`). */
+export function musiquesQuiServiront(l: ModSwitchVu[], tous: ModSwitchVu[]): ModSwitchVu[] {
+  return l.filter((m) => estMusique(m) && !conflitAvec(tous, m.cle));
+}
+
+/** Ce que l'accord annonce des musiques : leur taille (lue chez Firehouse, ou la dernière connue ; `null` : pas
+ * connue) ; `environ` : la taille vaut pour un autre choix de mods (des mods décochés). */
+export interface AnnonceMusiques {
+  octets: number | null;
+  environ?: boolean;
+}
+
+/** « + 41 Mo de musiques », « + environ 41 Mo de musiques » ; sans taille connue : sans chiffre inventé. */
+export function plusMusiques(octets: number | null | undefined, environ = false): string {
+  return octets && octets > 0 ? `+ ${environ ? 'environ ' : ''}${taille(octets)} de musiques` : '+ des musiques, taille pas encore connue';
+}
+
+/** La ligne de l'accord pour les mods de musique (`null` s'il n'y a rien à annoncer). */
+export function ligneAccordMusiques(l: ModSwitchVu[], a: AnnonceMusiques | null | undefined): string | null {
+  const musiques = l.filter(estMusique);
+  if (!a || !musiques.length) return null;
+  const qui = musiques.length > 1 ? 'Ces mods changent' : 'Ce mod change';
+  if (!(a.octets && a.octets > 0))
+    return `🎵 ${qui} des musiques du jeu. La taille des musiques n’est pas encore connue : rien n’est téléchargé pour elles maintenant ; les musiques seront demandées à la prochaine partie.`;
+  return `🎵 ${plusMusiques(a.octets, a.environ)} : ${qui.toLowerCase()} des musiques du jeu. Frogtend télécharge aussi les musiques des mods, préparées par Firehouse, pour toute la maison ; elles ne servent qu’avec la version exacte du jeu pour laquelle elles sont faites.`;
+}
+
+/** L'accord à l'allumage d'un mod de musique : le titre. */
+export function titreAllumageMusique(m: ModSwitchVu, octets: number | null | undefined): string {
+  return `🎵 Allumer « ${m.nom} » (${plusMusiques(octets)}) ?`;
+}
+
+/** L'accord à l'allumage d'un mod de musique : le texte (une ligne par paragraphe). `autre` : le mod de musique qui
+ * change la même musique, éteint d'un coup (une seule fenêtre). */
+export function messageAllumageMusique(m: ModSwitchVu, octets: number | null | undefined, autre?: ModSwitchVu | null): string {
+  const l: string[] = [];
+  if (autre) l.push(`« ${m.nom} » et « ${autre.nom} » changent la même musique du jeu : allumer « ${m.nom} » éteint « ${autre.nom} », pour toute la maison.`);
+  else l.push(`« ${m.nom} » change des musiques du jeu.`);
+  if (octets && octets > 0) {
+    l.push(`Frogtend télécharge les musiques des mods, préparées par Firehouse (${taille(octets)}), hors partie, pour toute la maison.`);
+    l.push('Elles ne servent qu’avec la version exacte du jeu pour laquelle elles sont faites.');
+  } else {
+    l.push('La taille des musiques n’est pas encore connue : rien n’est téléchargé maintenant ; les musiques seront demandées à la prochaine partie.');
+  }
+  l.push('Frogtend met tes parties de ce jeu à l’abri avant la prochaine partie.');
+  return l.join('\n');
+}
+
+/** Le bouton « 🎵 Préparer les musiques (≈ 41 Mo) ». */
+export function libellePreparer(octets: number | null | undefined): string {
+  return `🎵 Préparer les musiques${octets && octets > 0 ? ` (≈ ${taille(octets)})` : ''}`;
+}
+
+/** L'accord du bouton « Préparer » : le titre et le texte. */
+export function titrePreparer(octets: number): string {
+  return `🎵 Préparer les musiques des mods (${taille(octets)}) ?`;
+}
+export function messagePreparer(l: ModsSwitch | null | undefined): string {
+  const n = l?.musiques?.actives ?? 0;
+  return [
+    `Les musiques de ${nMods(n)} de musique, préparées par Firehouse, se téléchargent maintenant, hors partie, pour toute la maison.`,
+    'Elles ne servent qu’avec la version exacte du jeu pour laquelle elles sont faites.',
+    'Frogtend met tes parties de ce jeu à l’abri avant la prochaine partie.',
+  ].join('\n');
+}
+
+/** Le bouton « Préparer » se montre-t-il ? Des musiques sont à préparer (aucun oui noté pour ce choix et cette
+ * version) et Firehouse répond. */
+export function preparerVisible(l: ModsSwitch | null | undefined): boolean {
+  return !!l?.musiques?.a_preparer && (l.musiques.actives ?? 0) > 0 && !l.musiques.raison && l.etat === 'ok';
+}
+
+/** La ligne simple des musiques sur la fiche (bureau et canapé), ou `null` s'il n'y a rien à dire. La dernière partie
+ * ne compte que si elle avait EXACTEMENT le même choix de mods de musique (`meme_ensemble`, dit par le cœur). */
+export function ligneMusiques(l: ModsSwitch | null | undefined): string | null {
+  if (!l) return null;
+  const avant = l.musiques;
+  const dp = l.derniere_pose?.musiques ?? null;
+  const n = avant?.actives ?? 0;
+  if (!n) return null;
+  // Ce qui se voit déjà avant la partie (la version utilisée ne va pas) prime : rien ne sera posé.
+  if (avant?.raison) return `🎵 ${majuscule(texteSimple(avant.raison, false))}.`;
+  if (dp && avant?.meme_ensemble) {
+    if (dp.en_place) return `🎵 Les musiques de ${nMods(n)} sont en place (préparées par Firehouse).`;
+    if (dp.raison && !avant.a_preparer) return `🎵 ${majuscule(texteSimple(dp.raison, false))}.`;
+  }
+  if (avant?.a_preparer) return `🎵 Musiques de ${nMods(n)} à préparer : elles ne se téléchargent jamais sans ton accord.`;
+  return `🎵 Musiques de ${nMods(n)} : elles seront mises en place à la prochaine partie.`;
 }
 
 /** « environ 3 min » si le débit de ce PC est connu ; sinon rien (jamais une durée inventée). */
@@ -174,17 +289,19 @@ export function dureeEstimee(octets: number, debit: number | null | undefined): 
   return debit && debit > 0 ? `environ ${duree(octets / debit)}` : null;
 }
 
-/** Le titre de l'accord : combien, combien de Mo, combien de temps. */
-export function titreTelechargement(l: ModSwitchVu[], debit: number | null | undefined, miseAJour = false): string {
-  const total = totalOctets(l);
-  const d = dureeEstimee(total, debit);
-  const chiffres = `${taille(total)}${d ? `, ${d}` : ''}`;
+/** Le titre de l'accord : combien, combien de Mo, combien de temps ; avec un mod de musique qui servira (contrat 1.55),
+ * les musiques sont annoncées aussi (`musiques` : « + 41 Mo de musiques » ; absent : rien à annoncer). */
+export function titreTelechargement(l: ModSwitchVu[], debit: number | null | undefined, miseAJour = false, musiques?: AnnonceMusiques | null): string {
+  const annonce = !!musiques && l.some(estMusique);
+  const octets = annonce && musiques?.octets && musiques.octets > 0 ? musiques.octets : 0;
+  const d = dureeEstimee(totalOctets(l) + octets, debit);
+  const chiffres = `${taille(totalOctets(l))}${annonce ? ` ${plusMusiques(musiques?.octets, musiques?.environ)}` : ''}${d ? `, ${d}` : ''}`;
   if (l.length === 1) return `🧩 ${miseAJour ? 'Mettre à jour' : 'Télécharger'} « ${l[0].nom} » (${chiffres}) ?`;
   return `🧩 ${miseAJour ? 'Mettre à jour' : 'Télécharger'} ${l.length} mods (${chiffres}) ?`;
 }
 
-/** Le texte de l'accord (une ligne par paragraphe). */
-export function messageTelechargement(l: ModSwitchVu[], miseAJour = false): string {
+/** Le texte de l'accord (une ligne par paragraphe) ; `musiques` : ce qu'il faut annoncer des musiques (contrat 1.55). */
+export function messageTelechargement(l: ModSwitchVu[], miseAJour = false, musiques?: AnnonceMusiques | null): string {
   const lignes: string[] = [];
   if (l.length > 1) {
     lignes.push(...l.slice(0, 8).map((m) => `• ${m.nom} (${taille(m.taille)})`));
@@ -205,6 +322,8 @@ export function messageTelechargement(l: ModSwitchVu[], miseAJour = false): stri
         ? `💾 ${touchent.map((m) => `« ${m.nom} »`).join(', ')} touche${touchent.length > 1 ? 'nt' : ''} à tes parties : Frogtend les met à l’abri avant la prochaine partie.`
         : '💾 Il touche à tes parties : Frogtend les met à l’abri avant la prochaine partie.',
     );
+  const m = ligneAccordMusiques(l, musiques);
+  if (m) lignes.push(m);
   lignes.push('Le téléchargement se fait en arrière-plan ; il s’arrête si une partie commence.');
   return lignes.join('\n');
 }
@@ -285,7 +404,7 @@ export function ligneEtatListe(l: ModsSwitch | null | undefined): string | null 
  * ce que la dernière partie a dit). */
 export function blocModsVisible(l: ModsSwitch | null | undefined): boolean {
   if (!l || l.etat === 'rien') return false;
-  return l.mods.length > 0 || l.etat === 'injoignable' || !!l.remarque?.trim() || !!l.derniere_pose?.raisons.length;
+  return l.mods.length > 0 || l.etat === 'injoignable' || !!l.remarque?.trim() || !!l.derniere_pose?.raisons.length || !!ligneMusiques(l);
 }
 
 /** À la fin d'un téléchargement : le toast (combien sont prêts) ; `null` s'il n'y a rien de prêt. */
