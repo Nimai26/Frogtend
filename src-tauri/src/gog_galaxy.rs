@@ -1398,7 +1398,7 @@ mod tests {
 
         // 2. La fiche avec ses téléchargements : sans jeton, puis avec si nécessaire.
         let api = client().unwrap();
-        let route = format!("{PRODUITS}/products/{jeu}?expand=downloads");
+        let route = format!("{PRODUITS}/products/{jeu}?expand=downloads,expanded_dlcs");
         let mut fiche = Value::Null;
         for avec in [false, true] {
             rythme.attendre().await;
@@ -1424,6 +1424,30 @@ mod tests {
                 println!("   downloads ▸ {k} : {} élément(s){}", a.len(), a.first().map(|x| format!(", clés du premier {:?}", cles(x))).unwrap_or_default());
             }
         }
+        // Besoin 62 (bonus GOG) : l'extrait de bonus_content pour Firehouse, SANS aucun lien (downlink retiré partout).
+        if let Some(a) = fiche["downloads"]["bonus_content"].as_array() {
+            let extrait: Vec<Value> = a
+                .iter()
+                .map(|x| {
+                    let mut x = x.clone();
+                    if let Some(f) = x["files"].as_array_mut() {
+                        for f in f.iter_mut() {
+                            if let Some(o) = f.as_object_mut() {
+                                o.retain(|k, _| k != "downlink");
+                            }
+                        }
+                    }
+                    if let Some(o) = x.as_object_mut() {
+                        o.retain(|k, _| k != "downlink");
+                    }
+                    x
+                })
+                .collect();
+            let texte = serde_json::to_string_pretty(&extrait).unwrap_or_default();
+            assert!(!texte.contains("downlink") && !texte.contains("token"), "un lien resterait dans l'extrait");
+            println!("== EXTRAIT bonus_content ({} élément(s), sans liens) :
+{texte}", extrait.len());
+        }
         let installeurs = fiche["downloads"]["installers"].as_array().cloned().unwrap_or_default();
         if let Some(i) = installeurs.first() {
             println!("   installeur ▸ clés : {:?}", cles(i));
@@ -1444,7 +1468,27 @@ mod tests {
             d => println!("   dlcs : clés {:?} ; products : {}", cles(d), d["products"].as_array().map_or(0, Vec::len)),
         }
         if let Some(d) = fiche["expanded_dlcs"].as_array() {
-            println!("   expanded_dlcs : {} élément(s)", d.len());
+            println!("   expanded_dlcs : {} élément(s){}", d.len(), d.first().map(|x| format!(", clés du premier {:?}", cles(x))).unwrap_or_default());
+            // C4c-2 : la forme des DLC (où sont leurs installeurs, et lesquels ce compte possède).
+            for x in d {
+                let id = x["id"].as_u64().map(|n| n.to_string()).unwrap_or_default();
+                let inst = x["downloads"]["installers"].as_array().cloned().unwrap_or_default();
+                let langues: Vec<String> = inst.iter().filter(|i| i["os"] == "windows").map(|i| format!("{}:{}({} fichier(s))", i["language"].as_str().unwrap_or("?"), i["total_size"], i["files"].as_array().map_or(0, Vec::len))).collect();
+                println!(
+                    "   ▸ DLC {id} « {} » · possédé par ce compte : {} · downloads présent : {} · installeurs Windows {:?}",
+                    x["title"].as_str().unwrap_or("?"),
+                    compte.ids_lus.contains(&id),
+                    !x["downloads"].is_null(),
+                    langues
+                );
+                if let Some(i) = inst.iter().find(|i| i["os"] == "windows") {
+                    println!("       clés de l'installeur : {:?} ; fichier ▸ clés {:?}", cles(i), i["files"][0].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default());
+                }
+            }
+        }
+        if std::env::var("FROGTEND_GOG_PRODUITS_SEULS").is_ok() {
+            println!("== arrêt après la fiche (FROGTEND_GOG_PRODUITS_SEULS)");
+            return;
         }
 
         // 3. Le downlink du premier fichier de l'installeur Windows français (sinon anglais), sur api.gog.com seulement.
