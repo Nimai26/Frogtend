@@ -1,6 +1,6 @@
 // Reconnaître les jeux importés (contrat 1.21, besoin 28 ; ✅ Seb 20/10) : les formes renvoyées par le cœur, et les
 // mots de Firehouse dits simplement pour des gens qui veulent juste jouer.
-import { duree, taille } from '$lib/api';
+import { environDuree, taille } from '$lib/api';
 
 export interface Annonce {
   fichiers: number;
@@ -100,7 +100,7 @@ export function texteAnnonce(a: Annonce): string {
   if (a.repertoires) l.push(`${a.repertoires} archive(s) dont seule la liste du contenu est lue (rien n’est décompressé).`);
   if (a.absents) l.push(`${a.absents} fichier(s) introuvable(s) sur le disque : ignoré(s).`);
   const s = dureeEstimee(a, false);
-  if (s >= 1) l.push(`Durée : environ ${duree(s)} (moins si tes fichiers ont déjà été lus récemment).`);
+  if (s >= 1) l.push(`Durée : ${environDuree(s)} (moins si tes fichiers ont déjà été lus récemment).`);
   l.push('Seuls les NOMS de fichiers et une signature calculée de chacun partent vers Firehouse, jamais l’endroit où ils sont rangés.');
   return l.join('\n');
 }

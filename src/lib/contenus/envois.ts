@@ -2,7 +2,7 @@
 // toute la famille. Détecté à l'ouverture du panneau 📦 ; ACCORD chiffré de la personne qui utilise Frogtend (ou « tout
 // seul » si elle l'a choisi) ; envoi en arrière-plan, un fichier à la fois, en pause pendant une partie.
 
-import { duree, taille } from '$lib/api';
+import { environDuree, taille } from '$lib/api';
 
 export interface AEnvoyer {
   nom: string;
@@ -97,7 +97,7 @@ const pluriel = (n: number) => (n > 1 ? 's' : '');
 
 /** « environ 3 h 20 », ou ce qu'on sait quand le débit n'est pas encore mesuré. */
 export function dureeDite(secondes: number | null | undefined): string {
-  return secondes == null ? 'durée inconnue : elle sera mesurée au premier envoi' : `environ ${duree(secondes)}`;
+  return secondes == null ? 'durée inconnue : elle sera mesurée au premier envoi' : environDuree(secondes);
 }
 
 /** La ligne du panneau : « 📤 Firehouse n'a pas 3 contenus (1,2 Go) » ; `null` : rien à proposer. */

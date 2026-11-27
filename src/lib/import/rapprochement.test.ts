@@ -34,7 +34,8 @@ describe('reconnaître les jeux importés (contrat 1.21)', () => {
     expect(t).toContain('90 fichier(s)');
     expect(t).toContain('230 Mo');
     expect(t).toContain('jamais l’endroit');
-    expect(t).toContain('Durée : environ');
+    expect(t).toContain('Durée : ');
+    expect(t).not.toContain('environ moins');
     expect(t).not.toMatch(/NaN|Infinity/);
   });
 });

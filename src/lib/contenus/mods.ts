@@ -2,7 +2,7 @@
 // (bureau) et dans « Réglages du jeu » (Taodbox). Fonctions pures, partagées par les deux écrans. Jamais de jargon :
 // ni « exefs », ni « romfs », ni « build id », ni « clé ».
 
-import { duree, taille, type ModSwitchVu, type ModsSwitch, type SuiviModsSwitch } from '$lib/api';
+import { environDuree, taille, type ModSwitchVu, type ModsSwitch, type SuiviModsSwitch } from '$lib/api';
 import { filtrerOptions, simplifier } from '$lib/dialogues/filtre';
 
 const s = (n: number) => (n > 1 ? 's' : '');
@@ -288,7 +288,7 @@ export function ligneMusiques(l: ModsSwitch | null | undefined): string | null {
 
 /** « environ 3 min » si le débit de ce PC est connu ; sinon rien (jamais une durée inventée). */
 export function dureeEstimee(octets: number, debit: number | null | undefined): string | null {
-  return debit && debit > 0 ? `environ ${duree(octets / debit)}` : null;
+  return debit && debit > 0 ? environDuree(octets / debit) : null;
 }
 
 /** Le titre de l'accord : combien, combien de Mo, combien de temps ; avec un mod de musique qui servira (contrat 1.55),

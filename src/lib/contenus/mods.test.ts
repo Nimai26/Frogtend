@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${o} o`,
   duree: (s: number) => `${Math.round(s)} s`,
+  environDuree: (s: number) => `environ ${Math.round(s)} s`,
 }));
 
 import type { ModSwitchVu, ModsSwitch, SuiviModsSwitch } from '$lib/api';

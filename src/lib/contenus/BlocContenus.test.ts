@@ -58,6 +58,7 @@ const noms = vi.fn(async (..._a: unknown[]) => structuredClone(nomsReponse));
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${o} o`,
   duree: (s: number) => `${s} s`,
+  environDuree: (s: number) => `environ ${s} s`,
   estErreurCoeur: (e: unknown) => typeof e === 'object' && e !== null && 'sorte' in e,
   api: {
     contenusDuJeu: () => contenusDuJeu(),

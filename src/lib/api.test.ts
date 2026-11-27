@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adresseDocument, adresseFond, adresseFondDuJeu, adresseJaquette, adresseLogoDuJeu, adressePageLivret, libelleCompte, taille } from './api';
+import { adresseDocument, adresseFond, adresseFondDuJeu, adresseJaquette, adresseLogoDuJeu, adressePageLivret, environDuree, libelleCompte, taille } from './api';
 
 describe('adressePageLivret', () => {
   it('demande une page à une largeur arrondie aux 200 px supérieurs, entre 200 et 2 400', () => {
@@ -46,5 +46,13 @@ describe('divers', () => {
   it('écrit les tailles en français', () => {
     expect(taille(237887038)).toBe('226,9 Mo');
     expect(taille(324)).toBe('324 o');
+  });
+});
+
+describe('environDuree', () => {
+  it('ne dit jamais « environ moins d’une minute »', () => {
+    expect(environDuree(20)).toBe('moins d’une minute');
+    expect(environDuree(180)).toBe('environ 3 min');
+    expect(environDuree(4800)).toBe('environ 1 h 20');
   });
 });

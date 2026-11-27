@@ -82,6 +82,7 @@ export function apiSimulee() {
   return {
     taille: (o: number) => `${o} o`,
     duree: (s: number) => `${Math.round(s)} s`,
+    environDuree: (s: number) => `environ ${Math.round(s)} s`,
     estErreurCoeur: (e: unknown) => typeof e === 'object' && e !== null && 'sorte' in e,
     api: {
       modsSwitchLister: (...a: unknown[]) => lister(...a),

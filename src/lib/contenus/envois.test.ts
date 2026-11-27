@@ -1,7 +1,7 @@
 // Les textes de l'envoi à Firehouse (lot 7) : chiffrés, pour un public novice, jamais de chemin.
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/api', () => ({ taille: (o: number) => `${o} o`, duree: (s: number) => `${s} s` }));
+vi.mock('$lib/api', () => ({ taille: (o: number) => `${o} o`, duree: (s: number) => `${s} s`, environDuree: (s: number) => `environ ${s} s` }));
 
 import { dureeDite, envoisEnRoute, ligneEnvoi, ligneProgres, ligneProposition, titreAccord, type ExamenEnvois } from './envois';
 

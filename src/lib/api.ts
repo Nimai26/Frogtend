@@ -1710,6 +1710,12 @@ export function duree(secondes: number): string {
   return `${h} h ${String(min % 60).padStart(2, '0')}`;
 }
 
+/** Une durée ESTIMÉE : « environ 3 min », mais « moins d’une minute » tout court (jamais « environ moins d’… »). */
+export function environDuree(secondes: number): string {
+  const d = duree(secondes);
+  return Number.isFinite(secondes) && secondes >= 60 ? `environ ${d}` : d;
+}
+
 /** « 237 887 038 » octets → « 226,9 Mo ». */
 export function taille(octets: number): string {
   const unites = ['o', 'Ko', 'Mo', 'Go', 'To'];
