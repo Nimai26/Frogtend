@@ -505,6 +505,27 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.60 (27/11, Firehouse 4.6.0, EN SERVICE, `X-Api-Jeux-Version: 1.60`) — 🎁 BONUS GOG, 1re moitié (projet « 1.57 »)
+Reçu par message de la session Firehouse (27/11). Ajout compatible.
+1. `GET /jeu/gog/{gog_id}` → `{ok, media_id, launchbox_id}` ou 404 `{ok:false, code:"introuvable"}` (comme
+   `/jeu/steam` ; un jeu caché = absent). Le numéro GOG n'est posé chez Firehouse qu'à la 1re annonce de bonus : avant, 404.
+2. `POST /bonus/identifier {gog_id, titre, dossier?, steam_appid?}` → `{ok, statut: exact|probable|inconnu,
+   launchbox_id, media_id (null = pas encore de fiche), titre, plateforme:"Windows", reconnu_par:
+   gog_id|steam_appid|ludusavi|titre, candidats [{launchbox_id, titre, plateforme, annee, media_id}], motif}`.
+   Lecture seule, tous les grades. Ordre : numéro GOG déjà posé → steam_appid → manifeste Ludusavi → titre
+   (« probable » au mieux). Jeux Windows seulement ; plusieurs jeux = « probable », jamais le premier d'office ;
+   `gog_id` non numérique = 400 `{code:"type"}`. Exemple réel : `{"gog_id":"1423049311","titre":"Cyberpunk 2077"}` →
+   `{"statut":"exact","launchbox_id":14517,"media_id":null,"titre":"Cyberpunk 2077","reconnu_par":"ludusavi",…}`.
+3. `GET /jeu/{id}` gagne `possesseurs`, toujours présent : jeton ADMIN `[{username, boutique, compte_boutique, depuis}]`,
+   autres `[{boutique}]` (jamais un nom). Vide tant que personne n'est noté. Jamais gardé en cache d'un profil à l'autre.
+4. `POST /nexus/{jeu}/mod/{id}/fichier/{fid}/obtenir?launchbox_id=<lb>` (facultatif) : le fichier gardé est rattaché
+   au jeu PC ; pour un ADMIN, la fiche est créée « possédé » si elle manque. Sans `launchbox_id`, rien n'est deviné.
+- 🩹 Corrigé : `POST /identifier` et `GET /jeu/steam/{appid}` : un numéro Steam porté par plusieurs plateformes
+  (Cyberpunk 1091500) n'est plus « exact » au premier venu ; plateforme donnée, sinon Windows d'abord ; plusieurs jeux
+  visibles = « probable » avec candidats.
+- PAS ENCORE SERVI : `POST /bonus/annonces`, `/bonus/envois`, `GET /jeu/{id}/bonus` : attendent l'extrait RÉEL de
+  `bonus_content` de Frogtend (sans liens signés ; Another World 20th, Cyberpunk 2077).
+
 ### Firehouse 4.0.1 (26/11) — deux gardes, aucune forme changée
 Reçu par message de la session Firehouse (26/11).
 - ENVOIS SWITCH (1.42) : `POST /switch/envois` et `PUT /switch/envois/{id}` peuvent répondre **503** `Retry-After: 300`
