@@ -544,6 +544,12 @@ Reçu par message de la session Firehouse (27/11), Seb d'accord. Ajout compatibl
   Legacy 1.63 95863 → `{gog_bonus_id:"95863", type:null, etat:"refuse", motif:"type de bonus refusé : « game add-ons »
   (le jeu lui-même ou une clé personnelle — jamais servi)"}`.
 - Le premier envoi réel (Cyberpunk) se fera quand Seb le voudra : rien ne se lance sans son accord.
+- Complément (28/11, Firehouse 4.8.0, contrat toujours 1.61, rien de nouveau à appeler) : `album` est REMPLI dans
+  `GET /jeu/{id}/bonus` pour chaque bande-son : `{media_id, titre}` quand elle est devenue un album de la médiathèque
+  BO-Jeux, `null` sinon. Construit en fond quelques minutes après le rangement du ZIP, depuis le FLAC seul (même si le
+  MP3 est arrivé avant), jamais pour un jeu réservé. Ce `media_id` est une fiche MUSIQUE, à ouvrir dans Firehouse, pas
+  comme un jeu. Le reste ne change pas (ZIP toujours servi par `…/bonus/{bid}/fichier`) ; `bonus_empreinte` ne change
+  PAS quand l'album apparaît : relire `/jeu/{id}/bonus` après un envoi pour le voir arriver.
 
 ### 1.60 (27/11, Firehouse 4.6.0, EN SERVICE, `X-Api-Jeux-Version: 1.60`) — 🎁 BONUS GOG, 1re moitié (projet « 1.57 »)
 Reçu par message de la session Firehouse (27/11). Ajout compatible.
