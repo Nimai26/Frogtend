@@ -286,7 +286,7 @@ export class ModsSwitchJeu {
             // La taille des musiques vaut pour TOUS les mods de musique : des mods décochés, elle n'est qu'environ.
             const environ = servent.some((m) => !choisis.includes(m));
             const t = totalOctets(choisis) + (musique && mus ? mus : 0);
-            const d = dureeEstimee(t, debit);
+            const d = t > 0 ? dureeEstimee(t, debit) : null;
             const parties = ligneTouchentParties(choisis);
             return `${nMods(v.length)}, ${taille(totalOctets(choisis))}${musique ? ` ${plusMusiques(mus, environ)}` : ''}${d ? `, ${d}` : ''}${parties ? ` · ${parties}` : ''}`;
           },

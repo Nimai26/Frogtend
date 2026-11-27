@@ -11,8 +11,8 @@
       le clic ouvre la page ; Échap revient, et le bouton est de nouveau choisi.
 - [x] 2. Page : les onglets avec leur nombre ; un filtre, puis le même bouton pour l'enlever ; taper « donkey » dans la
       recherche ; Échap vide le champ.
-- [ ] 3. Flèches haut/bas dans la liste, le détail à droite suit ; « Voir 50 de plus ».
-- [ ] 4. « Tout télécharger ici » sur un onglet : seuls les ⭐ cochés, « Tout cocher / Tout décocher », le total change ;
+- [x] 3. Flèches haut/bas dans la liste, le détail à droite suit ; « Voir 50 de plus ».
+- [x] 4. « Tout télécharger ici » sur un onglet : seuls les ⭐ cochés, « Tout cocher / Tout décocher », le total change ;
       Annuler.
 - [ ] 5. (Canapé, plus tard) Y ▸ « 🧩 Mods » : s'ouvre tout de suite ; LB/RB ; A déplie, B replie puis revient.
 
