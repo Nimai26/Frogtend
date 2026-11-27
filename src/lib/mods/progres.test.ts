@@ -94,6 +94,24 @@ describe('avecProgres', () => {
     expect(arrets).toHaveBeenCalledTimes(1);
   });
 
+  it('lot C4c-2 : l’appelant suit les étapes de SON suivi seulement ; l’installation se dit sans « 0 o »', async () => {
+    const vus: string[] = [];
+    let vu: unknown = null;
+    await avecProgres(
+      '⬇ Installation',
+      true,
+      async (suivi) => {
+        emettre({ suivi: suivi + 1, etape: 'installation', faits: 0, total: 0, debit: 0 });
+        emettre({ suivi, etape: 'installation', faits: 0, total: 0, debit: 0 });
+        vu = toasts();
+      },
+      undefined,
+      (p) => vus.push(p.etape),
+    );
+    expect(vus).toEqual(['installation']);
+    expect(vu).toEqual([expect.objectContaining({ progres: { etape: 'Installation', chiffres: 'ça peut prendre quelques minutes', pourcent: 0 } })]);
+  });
+
   it('etatProgres : « environ » seulement pour un téléchargement approximatif', () => {
     expect(etatProgres({ etape: 'remise', faits: 2, total: 12, debit: 0 }, true)).toEqual({ etape: 'Remise dans le jeu', chiffres: '2 fichiers sur 12', pourcent: 17 });
     expect(etatProgres({ etape: 'telechargement', faits: 0, total: 1024, debit: 0 }, true).chiffres).toContain('environ');

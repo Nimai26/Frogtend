@@ -6,6 +6,20 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## ⬇ Installer un jeu GOG sans Galaxy (0.231.0, lot C4c-2)
+- [ ] 1. Mettre à jour. Sur la carte d'un PETIT jeu GOG possédé et pas installé (Another World 20th), « ⬇ Installer » :
+      la fenêtre d'accord dit la taille, la langue, le dossier et l'autorisation de Windows ; Annuler ne fait rien.
+- [ ] 2. Refaire « ⬇ Installer », accepter, puis répondre NON à Windows : « Installation annulée : tu as répondu Non… »,
+      rien n'est installé, l'installeur est gardé.
+- [ ] 3. Recommencer et répondre OUI : progression, « Installation… », puis « ✅ … est installé : ▶ Jouer » ; aucune
+      fenêtre de l'installeur à cliquer ; ▶ Jouer lance le jeu directement, sans Galaxy.
+- [ ] 4. Le dossier du jeu existe là où l'accord l'a dit ; l'installeur a été effacé.
+- [ ] 5. (Plus tard) Un jeu plus gros : « ⏹ Arrêter l'installation » pendant le téléchargement, fermer Frogtend,
+      rouvrir, « ⬇ Installer » : ça reprend là où c'était.
+- [ ] 6. (Plus tard) Un jeu avec un DLC possédé : proposé et coché, installé après le jeu.
+- [ ] 7. (Canapé, plus tard) La carte « ⬇ À installer » : l'accord prévient pour le clavier ou la souris ; l'invite de
+      Windows passe devant.
+
 ## 🧩 La page des mods d'un jeu (0.230.0)
 - [x] 1. Mettre à jour. Fiche de Mario Kart 8 Deluxe : la bande ne montre qu'un résumé et « 🧩 Ouvrir les mods (363) » ;
       le clic ouvre la page ; Échap revient, et le bouton est de nouveau choisi.

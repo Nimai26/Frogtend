@@ -31,6 +31,7 @@ pub mod medias;
 pub mod locale;
 pub mod gratuits;
 pub mod gog_galaxy;
+pub mod gog_installeur;
 pub mod icones_lanceurs;
 pub mod import_local;
 pub mod mame;
@@ -740,6 +741,9 @@ pub fn run() {
             commandes::boutique_gog_ajouter_compte,
             commandes::boutique_gog_oublier_compte,
             commandes::boutique_gog_avertissement_installation,
+            commandes::gog_installation_preparer,
+            commandes::gog_installer,
+            commandes::gog_installation_annuler,
             commandes::boutique_steam_ouvrir,
             commandes::boutiques_relire_pc,
             commandes::boutiques_retirer_possedes,

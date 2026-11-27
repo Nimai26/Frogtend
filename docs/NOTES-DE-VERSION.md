@@ -1,5 +1,23 @@
 # Notes de version de Frogtend
 
+## 0.231.0 — ⬇ Installer un jeu GOG sans GOG Galaxy
+
+- Nouveau : « ⬇ Installer » un jeu GOG possédé télécharge l'INSTALLEUR OFFICIEL de GOG (hors ligne) et installe le jeu
+  tout seul, sans GOG Galaxy. Une seule fenêtre d'accord dit tout avant : la taille exacte, la durée estimée, la langue
+  (« le jeu est en français », « contient le français » ou « en anglais »), le dossier, et que Windows demandera une
+  autorisation (droits administrateur : répondre Oui).
+- Les DLC que tu possèdes sur ce compte et qui s'installent sont proposés dans la même fenêtre, cochés d'office.
+- Le téléchargement se vérifie morceau par morceau et reprend là où il s'était arrêté (coupure, arrêt, Frogtend
+  fermé) ; « ⏹ Arrêter l'installation » pendant le téléchargement garde ce qui est reçu.
+- Avant de lancer quoi que ce soit, Frogtend vérifie que l'installeur est bien signé par GOG. Après, il vérifie que le
+  jeu est vraiment là (sans se fier au « tout va bien » de l'installeur) ; alors seulement l'installeur est effacé et
+  ▶ Jouer marche aussitôt (lancement direct de la 0.228.0). Un échec n'efface rien et dit quoi faire.
+- Au canapé : même chose depuis la carte « ⬇ À installer » ; l'accord prévient qu'il faudra un clavier ou la souris
+  pour répondre Oui à Windows (décision de Seb).
+- Corrigé : un envoi de mise à jour ou DLC Switch vers Firehouse n'est plus arrêté pour de bon quand le disque de
+  Firehouse est plein : il attend et reprend (Firehouse 4.0.1).
+- Corrigé : plus jamais « environ moins d'une minute » ; et plus de durée quand aucun mod n'est coché.
+
 ## 0.230.0 — 🧩 Une page pour les mods d'un jeu
 
 - Nouveau : les mods d'un jeu Switch ont leur PAGE (« 🧩 Ouvrir les mods (N) » sur la fiche, ou « ⚙ Gérer le jeu ▸

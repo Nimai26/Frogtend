@@ -17,6 +17,7 @@
   import { etat } from '$lib/etat.svelte';
   import { abrisAuto, chargerLigneGardee } from '$lib/parties/abriAuto.svelte';
   import { messageLanceur, ouvrirParLaBoutique } from '$lib/boutiques/boutiques-pc.svelte';
+  import { arreterInstallationGog, enInstallationGog, installGog } from '$lib/boutiques/installer-gog.svelte';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
   import RappelTriches from './RappelTriches.svelte';
@@ -117,6 +118,13 @@
              charge. Installé, c'est un jeu du PC : Jouer passe par Frogtend (partie suivie). -->
         {#if messageLanceur(j)}
           <p class="tag sur-pc">{messageLanceur(j)}</p>
+        {:else if j.boutique === 'gog' && !j.installe && enInstallationGog(j.cle_boutique)}
+          <!-- Lot C4c-2 : l'installation GOG en cours (sa progression est dans le message du bas) ; Arrêter pendant le
+               téléchargement seulement (confirmé avant). -->
+          <p class="tag sur-pc">{installGog.phase === 'preparation' ? '⏳ Préparation de l’installation…' : '⬇ Installation en cours…'}</p>
+          {#if installGog.phase === 'telechargement'}
+            <button class="btn danger" onclick={arreterInstallationGog}>⏹ Arrêter l’installation</button>
+          {/if}
         {:else}
           <button class="btn primary grand" onclick={() => j && ouvrirParLaBoutique(j)}>
             {j.installe ? '▶ Jouer' : '⬇ Installer'} <span class="muted">({libelleOuverture(j)})</span>

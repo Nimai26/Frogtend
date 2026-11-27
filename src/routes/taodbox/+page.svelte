@@ -23,7 +23,7 @@
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { gog } from '$lib/boutiques/gog.svelte';
-  import { confirmerInstallationGog } from '$lib/boutiques/installation-gog';
+  import { arreterInstallationGog, avertissementSortieGog, enInstallationGog, installerGog, installGog } from '$lib/boutiques/installer-gog.svelte';
   import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { adresseImageParUrl, adresseFondDuJeu, adresseLogoDuJeu } from '$lib/api';
   import { apresRepos, assezGrandPourUnFond, idDuFocus } from '$lib/taodbox/fond';
@@ -73,12 +73,13 @@
   );
   // Lot C2 : après chaque import Steam terminé (à l'ouverture de Frogtend, par exemple), les cartes « à installer »
   // sont relues (le premier passage est celui de onMount) ; lot C4a : de même après chaque lecture des jeux GOG.
-  let importsVus = steam.imports + gog.imports;
+  // Lot C4c-2 : de même après chaque installation GOG réussie (partie du bureau ou du canapé), et les jeux du PC.
+  let importsVus = steam.imports + gog.imports + installGog.finies;
   $effect(() => {
-    const n = steam.imports + gog.imports;
+    const n = steam.imports + gog.imports + installGog.finies;
     if (n === importsVus) return;
     importsVus = n;
-    untrack(() => void lireAInstaller());
+    untrack(() => void rechargerJeuxDuPc().then(lireAInstaller, lireAInstaller));
   });
   /** Les cartes pas installées de la ludothèque (1 000 par page). */
   async function lireAInstaller() {
@@ -205,9 +206,16 @@
   /** A sur une carte « à installer » : la fenêtre d'installation de la boutique s'ouvre (le même moyen qu'au bureau).
    * Le jeu devient jouable à la relecture suivante des boutiques (ouverture du profil). */
   async function installerParLaBoutique(c: CarteAInstallerTaodbox) {
+    // Lot C4c-2 : A sur la carte d'un jeu GOG en cours d'installation : proposer de l'arrêter (téléchargement seulement).
+    if (c.boutique === 'gog' && enInstallationGog(c.cle)) return arreterInstallationGog();
     if (lancementImpossible()) return;
-    // Lot C4b : un jeu d'un autre compte GOG que celui ouvert dans Galaxy : averti avant (fenêtre maison, manette).
-    if (c.boutique === 'gog' && !(await confirmerInstallationGog(c.cle))) return;
+    // Lot C4c-2 : un jeu GOG s'installe SANS GOG Galaxy (prévenu avant : il faudra un clavier ou la souris pour
+    // répondre Oui à Windows) ; installé, il devient jouable aussitôt.
+    if (c.boutique === 'gog') {
+      // Les cartes sont relues à la fin par l'effet sur `installGog.finies` (d'où que l'installation soit partie).
+      await installerGog({ cle: c.cle, titre: c.nom }, { auCanape: true });
+      return;
+    }
     toast(messageInstallationCanape(c.boutique), 'neutre');
     try {
       await api.boutiqueOuvrir(c.boutique, c.cle, 'installer');
@@ -291,7 +299,9 @@
   }
 
   async function quitter() {
-    if (!(await confirmer('⏻ Quitter Taodbox ?', { libelleValider: 'Quitter' }))) return;
+    // Lot C4c-2 : une installation GOG en cours est dite avant (le jeu ne serait ni vérifié ni prêt à jouer).
+    const gogEnCours = avertissementSortieGog();
+    if (!(await confirmer('⏻ Quitter Taodbox ?', { message: gogEnCours ?? undefined, libelleValider: 'Quitter', danger: !!gogEnCours }))) return;
     const { exit } = await import('@tauri-apps/plugin-process');
     await exit(0);
   }
@@ -433,7 +443,7 @@
             <!-- La jaquette RÉDUITE par le cœur (400 px, gardée réduite), Steam compris (d'après son appid) : jamais l'original de la boutique. -->
             {#if imageCarteAInstaller(c)}<img src={imageCarteAInstaller(c)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
             <span class="coin"><IconesBoutiques grand origines={[c.boutique]} /></span>
-            <span class="pastille-installer">⬇ À installer</span>
+            <span class="pastille-installer">{enInstallationGog(c.cle) && c.boutique === 'gog' ? '⬇ Installation…' : '⬇ À installer'}</span>
           </span>
           <span class="titre">{c.nom}</span>
         </button>

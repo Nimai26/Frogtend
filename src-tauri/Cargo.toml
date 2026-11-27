@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.230.0"
+version = "0.231.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -63,7 +63,9 @@ sdl3-sys = { version = "0.7", features = ["build-from-source-static"] }
 # de WebView2. Mêmes versions que celles déjà tirées par tauri/wry (rien de nouveau à télécharger).
 webview2-com = "0.39"
 windows-core-wv2 = { package = "windows-core", version = "0.62" }
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_XboxController", "Win32_System_LibraryLoader", "Win32_Globalization", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Time", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_NetworkManagement_WNet", "Win32_Storage_FileSystem", "Win32_System_Ioctl", "Win32_System_IO", "Win32_System_Diagnostics_Debug", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Com", "Data_Pdf", "Storage", "Storage_Streams", "Foundation"] }
+# Lot C4c-2 : Win32_UI_Shell pour ShellExecuteExW (l'installeur hors ligne de GOG, élevé par Windows ; un refus de
+# l'UAC se reconnaît au code 1223).
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_XboxController", "Win32_System_LibraryLoader", "Win32_Globalization", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Time", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_NetworkManagement_WNet", "Win32_Storage_FileSystem", "Win32_System_Ioctl", "Win32_System_IO", "Win32_System_Diagnostics_Debug", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Com", "Win32_UI_Shell", "Data_Pdf", "Storage", "Storage_Streams", "Foundation"] }
 
 # Constructions de développement et tests : informations de débogage réduites (le cache restait énorme : 61 Go le
 # 02/10, disque plein). Sans effet sur l'exécutable livré.

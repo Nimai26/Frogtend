@@ -6535,6 +6535,416 @@ pub async fn boutique_ouvrir(boutique: String, cle: String, action: String) -> R
     tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|_| Erreur::Disque(format!("{} ne s'ouvre pas.", crate::boutiques_pc::nom_boutique(&boutique))))
 }
 
+// ───────────── Lot C4c-2 : installer un jeu GOG SANS GOG Galaxy (installeur hors ligne officiel) ─────────────
+
+/// Un jeu ou un DLC dans la fenêtre d'accord : sa taille ANNONCÉE par GOG (arrondie).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct ElementGogVu {
+    pub id: String,
+    pub titre: String,
+    pub taille: u64,
+}
+
+/// Ce que la fenêtre d'accord montre avant d'installer un jeu GOG (rien n'est téléchargé pour la remplir, sauf la fiche
+/// publique de GOG).
+#[derive(Serialize, Clone, Debug, PartialEq, Default)]
+pub struct PreparationGog {
+    pub titre: String,
+    /// Le jeu contient le français (`languages` de GOG).
+    pub en_francais: bool,
+    /// La langue de l'installeur choisi (« fr », sinon « en »).
+    pub langue_installeur: String,
+    /// Le dossier où le jeu sera installé.
+    pub dossier: String,
+    pub jeu: Option<ElementGogVu>,
+    /// Les DLC possédés par le compte, avec un installeur Windows (cochés d'office).
+    pub dlcs: Vec<ElementGogVu>,
+    /// La place libre sur le disque de l'emplacement réglé (`None` : inconnue).
+    pub libre: Option<u64>,
+    /// Les octets déjà reçus d'une installation arrêtée (déduits de la place à demander).
+    pub deja_recus: u64,
+    /// La marge gardée libre sur le disque (`jeux_pc::MARGE_LIBRE`).
+    pub marge: u64,
+    /// Pourquoi Frogtend ne peut pas l'installer lui-même (dit dans une fenêtre).
+    pub refus: Option<String>,
+    /// GOG Galaxy est installé.
+    pub galaxy: bool,
+    /// Galaxy peut aider : SEULEMENT quand GOG n'a pas d'installeur hors ligne pour Windows (jamais pour un jeu déjà
+    /// installé, un dossier pas vide, un emplacement pas réglé ou un compte inconnu : relecture de l'expert, 27/11).
+    pub galaxy_peut_aider: bool,
+    /// Le jeu a été installé par Frogtend pendant qu'il était fermé : « ⬇ Installer » finit le travail (vérifier,
+    /// marquer, effacer l'installeur, reposer les parties) sans rien télécharger.
+    pub rattrapage: bool,
+}
+
+fn element_vu(e: &crate::gog_installeur::Element) -> ElementGogVu {
+    ElementGogVu { id: e.id.clone(), titre: e.titre.clone(), taille: e.installeur.total_annonce }
+}
+
+/// L'emplacement réglé « Windows » où installer : celui où des installeurs de CE jeu attendent déjà (une reprise),
+/// sinon le premier qui a assez de place, sinon le premier qui existe. Pur, testé.
+pub(crate) fn emplacement_gog<'a>(proposes: &'a [crate::jeux_pc::EmplacementPropose], cle: &str) -> Option<&'a crate::jeux_pc::EmplacementPropose> {
+    let existants = || proposes.iter().filter(|e| e.libre.is_some());
+    existants()
+        .find(|e| std::path::Path::new(&e.chemin).join(crate::gog_installeur::DOSSIER_INSTALLEURS).join(cle).is_dir())
+        .or_else(|| existants().find(|e| e.assez))
+        .or_else(|| existants().next())
+}
+
+/// Prépare l'installation d'un jeu GOG : le compte qui le possède, la fiche de GOG, l'installeur, les DLC possédés,
+/// l'emplacement et le dossier. Un refus connu revient dans `refus` (pas d'erreur) ; le plan et le compte, sinon.
+/// `pc` : le registre de ce PC (`gog_installeur::PcWindows` ; un faux dans les tests, qui ne lisent jamais le vrai).
+async fn preparer_gog(
+    noyau: &Noyau,
+    emplacements: &Emplacements,
+    reseau: &crate::gog_installeur::ReseauGog,
+    cle: &str,
+    pc: &dyn crate::gog_installeur::PcGog,
+) -> Resultat<(PreparationGog, Option<(crate::gog_installeur::Plan, crate::boutiques::CompteGog, String)>)> {
+    use crate::gog_installeur as gi;
+    if !crate::gratuits::numero_gog(cle) {
+        return Err(Erreur::Refus("Ce n'est pas un numéro de jeu GOG.".into()));
+    }
+    let p = profil_ouvert(noyau).await?;
+    let galaxy = tauri::async_runtime::spawn_blocking(crate::boutiques_pc::galaxy_present).await.unwrap_or(false);
+    let mut prep = PreparationGog { marge: crate::jeux_pc::MARGE_LIBRE, galaxy, ..Default::default() };
+    let refus = |prep: PreparationGog, m: &str| Ok((PreparationGog { refus: Some(m.to_string()), ..prep }, None));
+    let comptes = crate::boutiques::lire_source(&dossier_profil_de(noyau, &p.id), "gog").map(|c| crate::boutiques::comptes_gog_lus(&c)).unwrap_or_default();
+    let Some(compte) = gi::compte_possesseur(&comptes, cle).cloned() else {
+        return refus(prep, "Frogtend ne sait pas quel compte GOG possède ce jeu : relis tes comptes GOG dans 🛒 Boutiques, puis réessaie.");
+    };
+    let fiche = gi::lire_fiche(reseau, cle).await?;
+    let produit = gi::lire_produit_installation(&fiche, &compte.ids_lus, &reseau.api).ok_or_else(|| Erreur::Serveur("GOG a répondu une fiche illisible.".into()))?;
+    prep.titre = produit.titre.clone();
+    prep.en_francais = produit.en_francais;
+    let Some(jeu) = produit.jeu else {
+        prep.galaxy_peut_aider = true;
+        return refus(prep, "GOG ne propose pas d'installeur hors ligne de ce jeu pour Windows (ni en français ni en anglais).");
+    };
+    prep.langue_installeur = jeu.installeur.langue.clone();
+    prep.jeu = Some(element_vu(&jeu));
+    prep.dlcs = produit.dlcs.iter().map(element_vu).collect();
+    let total = std::iter::once(&jeu).chain(&produit.dlcs).map(|e| e.installeur.total_annonce).sum();
+    let besoin = gi::place_necessaire(total).saturating_sub(crate::jeux_pc::MARGE_LIBRE);
+    let proposes = crate::jeux_pc::proposer(emplacements, "Windows", besoin);
+    let Some(e) = emplacement_gog(&proposes, cle) else {
+        return refus(prep, "Aucun dossier de jeux n'est réglé sur ce PC pour les jeux Windows : règle-le dans ⚙ Réglages, « 📁 Emplacements des jeux », puis réessaie.");
+    };
+    let racine = std::path::PathBuf::from(&e.chemin);
+    let plan = gi::Plan { dest: racine.join(crate::jeux_pc::nom_de_dossier(&produit.titre)), installeurs: racine.join(gi::DOSSIER_INSTALLEURS), jeu, dlcs: produit.dlcs };
+    prep.dossier = plan.dest.display().to_string();
+    prep.libre = e.libre;
+    prep.deja_recus = gi::octets_deja_recus(&plan);
+    if pc.entree(cle).is_some() {
+        // Installé par Frogtend pendant qu'il était fermé : la suite du travail sera faite (sans rien télécharger).
+        if gi::rattrapable(pc, &plan) {
+            prep.rattrapage = true;
+            return Ok((prep, Some((plan, compte, p.id))));
+        }
+        return refus(prep, "Ce jeu GOG est déjà installé sur ce PC : Frogtend ne le réinstalle pas. Relis tes boutiques (🛒 Boutiques) pour le voir dans ta ludothèque.");
+    }
+    if std::fs::read_dir(&plan.dest).is_ok_and(|mut l| l.next().is_some()) {
+        let m = format!("Le dossier « {} » existe déjà et n'est pas vide : Frogtend n'y installe rien. Range-le, ou règle un autre emplacement des jeux.", prep.dossier);
+        return refus(prep, &m);
+    }
+    Ok((prep, Some((plan, compte, p.id))))
+}
+
+/// La fenêtre d'accord d'une installation GOG : ce qui sera téléchargé, la langue, le dossier, la place (lecture de la
+/// fiche publique de GOG seulement).
+#[tauri::command]
+pub async fn gog_installation_preparer(app: AppHandle, noyau: State<'_, Noyau>, cle: String) -> Resultat<PreparationGog> {
+    let cle = cle.strip_prefix("gog_").unwrap_or(&cle).to_string();
+    Ok(preparer_gog(&noyau, &emplacements(&app), &crate::gog_installeur::ReseauGog::officiel(), &cle, &crate::gog_installeur::PcWindows::default()).await?.0)
+}
+
+/// Le jeton d'accès de GOG pendant une installation : renouvelé par le coffre (sous le verrou des comptes GOG, le
+/// temps du renouvellement seulement), gardé en mémoire tant qu'il vaut (`expires_in`, moins 5 min).
+struct JetonGogInstallation<'a> {
+    noyau: &'a Noyau,
+    secret: String,
+    compte: String,
+    cache: std::sync::Mutex<Option<(String, std::time::Instant, u64)>>,
+}
+
+/// La durée de vie d'un jeton d'accès gardé : `expires_in` moins 5 min (3000 s s'il n'est pas dit). Pur, testé.
+fn vie_jeton_gog(expire_dans: u64) -> u64 {
+    if expire_dans == 0 {
+        3000
+    } else {
+        expire_dans.saturating_sub(300)
+    }
+}
+
+impl crate::gog_installeur::SourceJeton for JetonGogInstallation<'_> {
+    async fn jeton(&self, renouveler: bool) -> Resultat<String> {
+        if !renouveler {
+            let garde = self.cache.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if let Some((j, quand, duree)) = garde {
+                if quand.elapsed().as_secs() < vie_jeton_gog(duree) {
+                    return Ok(j);
+                }
+            }
+        }
+        let _un_seul = COMPTES_GOG.lock().await;
+        let journal = |m: &str| self.noyau.journaliser(m);
+        match crate::gog_galaxy::jetons_du_coffre(&*self.noyau.coffre, &journal, crate::gog_galaxy::AUTH, &self.secret, &self.compte).await {
+            crate::gog_galaxy::JetonRange::Valable(j) => {
+                *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((j.acces.clone(), std::time::Instant::now(), j.expire_dans));
+                Ok(j.acces)
+            }
+            crate::gog_galaxy::JetonRange::ARefaire => Err(Erreur::Refus(crate::gog_galaxy::MOTIF_RECONNECTER_GOG.into())),
+            crate::gog_galaxy::JetonRange::Panne => Err(Erreur::Reseau("GOG ne répond pas pour l'instant : réessaie plus tard. Ce qui est déjà téléchargé est gardé.".into())),
+        }
+    }
+}
+
+/// Les installations GOG en cours (dossier de données, numéro GOG, arrêt demandé, encore annulable).
+type EnCoursGog = (std::path::PathBuf, String, std::sync::Arc<std::sync::atomic::AtomicBool>, std::sync::Arc<std::sync::atomic::AtomicBool>);
+static INSTALLATIONS_GOG: std::sync::Mutex<Vec<EnCoursGog>> = std::sync::Mutex::new(Vec::new());
+
+/// Rendue à la fin de l'installation, même après une erreur.
+struct GardeInstallationGog(std::path::PathBuf, String);
+
+impl GardeInstallationGog {
+    fn prendre(donnees: &std::path::Path, cle: &str) -> (Self, std::sync::Arc<std::sync::atomic::AtomicBool>, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        let (arret, annulable) = (std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)), std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)));
+        let mut l = INSTALLATIONS_GOG.lock().unwrap_or_else(|e| e.into_inner());
+        l.retain(|x| !(x.0 == donnees && x.1 == cle));
+        l.push((donnees.to_path_buf(), cle.to_string(), arret.clone(), annulable.clone()));
+        (GardeInstallationGog(donnees.to_path_buf(), cle.to_string()), arret, annulable)
+    }
+}
+
+impl Drop for GardeInstallationGog {
+    fn drop(&mut self) {
+        INSTALLATIONS_GOG.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| !(x.0 == self.0 && x.1 == self.1));
+    }
+}
+
+/// Demande l'arrêt d'une installation GOG : possible seulement pendant le téléchargement (ce qui est reçu est gardé).
+/// `Ok(false)` : aucune installation de ce jeu en cours. Refus : l'installeur de GOG travaille déjà. Pur, testé.
+pub(crate) fn annuler_installation_gog(donnees: &std::path::Path, cle: &str) -> Resultat<bool> {
+    use std::sync::atomic::Ordering;
+    let l = INSTALLATIONS_GOG.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(x) = l.iter().find(|x| x.0 == donnees && x.1 == cle) else { return Ok(false) };
+    if !x.3.load(Ordering::SeqCst) {
+        return Err(Erreur::Refus("L'installeur de GOG travaille déjà : il ne peut plus être arrêté. Attends la fin.".into()));
+    }
+    x.2.store(true, Ordering::SeqCst);
+    Ok(true)
+}
+
+/// Installe un jeu GOG possédé (après l'accord de la personne) et les DLC cochés (`dlcs`, leurs numéros), par
+/// l'installeur hors ligne officiel (voir `gog_installeur`). Progression : `mod-progres` sous `suivi`. Puis les jeux GOG
+/// du PC sont relus (le jeu devient jouable par le lancement direct de C4c-1) et ses parties restaurées reposées.
+#[tauri::command]
+pub async fn gog_installer(app: AppHandle, noyau: State<'_, Noyau>, cle: String, dlcs: Vec<String>, suivi: u32) -> Resultat<crate::gog_installeur::Bilan> {
+    use crate::gog_installeur as gi;
+    let cle = cle.strip_prefix("gog_").unwrap_or(&cle).to_string();
+    if !crate::gratuits::numero_gog(&cle) {
+        return Err(Erreur::Refus("Ce n'est pas un numéro de jeu GOG.".into()));
+    }
+    let id = crate::ludotheque::id_boutique("gog", &cle);
+    // Une seule installation de ce jeu à la fois (double appui, bureau et canapé).
+    let _seule = crate::partie::InstallationEnCours::prendre(&noyau.dossier, id)?;
+    // Comme les autres installations : une partie de CE jeu ne démarre pas pendant son installation (et rien n'est
+    // déplacé, abris ni émulateurs, tant qu'un jeu est occupé).
+    let _occupe = noyau.occuper(id);
+    let reseau = gi::ReseauGog::officiel();
+    let (prep, plan) = preparer_gog(&noyau, &emplacements(&app), &reseau, &cle, &gi::PcWindows::default()).await?;
+    if let Some(r) = prep.refus {
+        return Err(Erreur::Refus(r));
+    }
+    let Some((mut plan, compte, profil)) = plan else { return Err(Erreur::Refus("Frogtend ne peut pas installer ce jeu.".into())) };
+    plan.dlcs.retain(|d| dlcs.contains(&d.id));
+    // La place : l'installeur ET le jeu installé, moins ce qui est déjà reçu (installeurs et jeu sur le même disque :
+    // le dossier des installeurs est dans l'emplacement du jeu).
+    let besoin = gi::place_necessaire(plan.total_annonce()).saturating_sub(gi::octets_deja_recus(&plan));
+    let racine = plan.installeurs.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+    // (Un rattrapage ne télécharge rien : pas de place à demander.)
+    if let Some(libre) = crate::jeux_pc::place_libre(&racine).filter(|l| *l < besoin && !prep.rattrapage) {
+        return Err(Erreur::Refus(format!(
+            "Pas assez de place sur le disque : il faut {} libres (l'installeur, puis le jeu installé), il en reste {}. Libère de la place, ou règle un autre emplacement des jeux.",
+            crate::erreurs::taille_lisible(besoin),
+            crate::erreurs::taille_lisible(libre)
+        )));
+    }
+    let (_garde, arret, annulable) = GardeInstallationGog::prendre(&noyau.dossier, &cle);
+    let jeton = JetonGogInstallation { noyau: &noyau, secret: crate::boutiques::secret_compte_gog(&profil, compte.navigateur, &compte.id_galaxy), compte: compte.id_galaxy.clone(), cache: std::sync::Mutex::new(None) };
+    let progres = suivi_mod(&app, suivi);
+    let journal = |m: &str| noyau.journaliser(m);
+    noyau.journaliser(&format!("installation GOG : jeu {cle} : départ ({} DLC coché(s))", plan.dlcs.len()));
+    // La fenêtre principale, parente de l'invite de l'UAC (aucune : nulle, Windows place l'invite seul).
+    #[cfg(windows)]
+    let pc = gi::PcWindows { parent: app.get_webview_window("main").and_then(|w| w.hwnd().ok()).map_or(0, |h| h.0 as isize) };
+    #[cfg(not(windows))]
+    let pc = gi::PcWindows::default();
+    let r = gi::installer(&reseau, &jeton, &pc, &plan, &arret, &annulable, &progres, &journal).await;
+    match &r {
+        Ok(b) if !b.pause => {
+            // Rattacher : le jeu GOG installé devient une carte jouable, puis ses parties restaurées sont reposées.
+            if let Err(e) = relire_pc(&noyau, &["gog"], false).await {
+                noyau.journaliser(&format!("installation GOG : jeu {cle} : relecture des jeux GOG impossible ({})", if matches!(e, Erreur::Disque(_)) { "disque" } else { "autre" }));
+            }
+            // Les parties restaurées de la personne qui a lancé l'installation seulement : si le profil a changé pendant
+            // ces heures, rien n'est reposé chez un autre (noté au journal ; relecture de l'expert, 27/11).
+            let meme_profil = noyau.actif().await.is_some_and(|q| q.id == profil);
+            let lue = noyau.registre().jeu(id);
+            match lue {
+                Ok(Some(j)) if meme_profil => {
+                    if let Some(i) = j.installation {
+                        noyau.reposer_parties_restaurees(id, &i).await;
+                    }
+                }
+                Ok(Some(_)) => noyau.journaliser(&format!("installation GOG : jeu {cle} : profil changé pendant l'installation, parties restaurées pas reposées")),
+                _ => noyau.journaliser(&format!("installation GOG : jeu {cle} : pas encore vu au registre des jeux du PC")),
+            }
+        }
+        Ok(_) => {}
+        // La sorte seulement (`refus`, `reseau`…), jamais le texte (il peut porter un titre ou un chemin).
+        Err(e) => noyau.journaliser(&format!("installation GOG : jeu {cle} : échec ({})", sorte_erreur(e))),
+    }
+    r
+}
+
+/// Arrête une installation GOG pendant son téléchargement (ce qui est reçu est gardé). `false` : rien en cours.
+#[tauri::command]
+pub fn gog_installation_annuler(noyau: State<'_, Noyau>, cle: String) -> Resultat<bool> {
+    let cle = cle.strip_prefix("gog_").unwrap_or(&cle).to_string();
+    annuler_installation_gog(&noyau.dossier, &cle)
+}
+
+#[cfg(test)]
+mod tests_installation_gog {
+    use super::*;
+    use crate::jeux_pc::EmplacementPropose;
+
+    #[test]
+    fn l_emplacement_d_une_reprise_passe_avant_celui_qui_a_le_plus_de_place() {
+        let d = tempfile::tempdir().unwrap();
+        let (a, b) = (d.path().join("A"), d.path().join("B"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(b.join(crate::gog_installeur::DOSSIER_INSTALLEURS).join("42")).unwrap();
+        let e = |p: &std::path::Path, libre: Option<u64>, assez: bool| EmplacementPropose { chemin: p.display().to_string(), libre, assez };
+        let l = vec![e(&d.path().join("absent"), None, false), e(&a, Some(10), true), e(&b, Some(1), false)];
+        assert_eq!(emplacement_gog(&l, "42").unwrap().chemin, b.display().to_string(), "les installeurs déjà reçus");
+        assert_eq!(emplacement_gog(&l, "7").unwrap().chemin, a.display().to_string(), "le premier qui a assez de place");
+        let l = vec![e(&a, Some(1), false), e(&b, Some(1), false)];
+        assert_eq!(emplacement_gog(&l, "7").unwrap().chemin, a.display().to_string(), "sinon le premier qui existe");
+        assert!(emplacement_gog(&[e(&d.path().join("absent"), None, false)], "7").is_none());
+    }
+
+    #[tokio::test]
+    async fn la_preparation_dit_le_dossier_la_langue_les_dlc_possedes_et_les_refus() {
+        use httpmock::prelude::*;
+        let s = MockServer::start_async().await;
+        let api = s.base_url();
+        s.mock(|w, t| {
+            w.method(GET).path("/products/1207658924").query_param("expand", "downloads,expanded_dlcs");
+            t.status(200).json_body(serde_json::json!({
+                "id": 1207658924, "title": "Another World™", "languages": {"en": "English", "fr": "français"},
+                "downloads": {"installers": [{"id": "installer_windows_en", "os": "windows", "language": "en", "version": "1.0", "total_size": 1000,
+                    "files": [{"id": "en1installer0", "size": 1000, "downlink": format!("{api}/products/1207658924/downlink/installer/en1installer0")}]}]},
+                "expanded_dlcs": [
+                    {"id": 1597316373, "title": "Bonus", "downloads": {"installers": [{"id": "d", "os": "windows", "language": "en", "total_size": 10, "files": [{"id": "en1installer0", "size": 10, "downlink": format!("{api}/products/1597316373/downlink/installer/en1installer0")}]}]}},
+                    {"id": 1256837418, "title": "Pas à moi", "downloads": {"installers": [{"id": "d", "os": "windows", "language": "en", "total_size": 10, "files": [{"id": "en1installer0", "size": 10, "downlink": format!("{api}/products/1256837418/downlink/installer/en1installer0")}]}]}}
+                ]}));
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(d.path(), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let profil = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&profil, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        let reseau = crate::gog_installeur::ReseauGog::essai(&api);
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let mut emp = Emplacements::default();
+        emp.systemes.insert("Windows".into(), vec![jeux.display().to_string()]);
+
+        // Aucun compte GOG : Frogtend ne devine pas.
+        let (p, plan) = preparer_gog(&n, &emp, &reseau, "1207658924", &FauxRegistre(None)).await.unwrap();
+        assert!(p.refus.unwrap().contains("quel compte GOG"));
+        assert!(plan.is_none());
+
+        let compte = crate::boutiques::CompteGog { id_galaxy: "77".into(), ids_lus: vec!["1207658924".into(), "1597316373".into()], numero: 1, ..Default::default() };
+        let mut c = crate::boutiques::CompteBoutique::default();
+        crate::boutiques::poser_comptes_gog(&mut c, vec![compte]);
+        crate::boutiques::ecrire_source(&dossier_profil_de(&n, &profil), "gog", Some(&c)).unwrap();
+        let (p, plan) = preparer_gog(&n, &emp, &reseau, "1207658924", &FauxRegistre(None)).await.unwrap();
+        assert_eq!(p.refus, None);
+        assert_eq!((p.titre.as_str(), p.en_francais, p.langue_installeur.as_str()), ("Another World", true, "en"));
+        assert_eq!(p.dossier, jeux.join("Another World").display().to_string());
+        assert_eq!(p.dlcs.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["1597316373"], "seulement le DLC possédé");
+        assert_eq!(p.jeu.as_ref().map(|j| j.taille), Some(1000));
+        assert!(p.libre.is_some());
+        let (plan, compte, pid) = plan.unwrap();
+        assert_eq!((compte.id_galaxy.as_str(), pid.as_str()), ("77", profil.as_str()));
+        assert_eq!(plan.installeurs, jeux.join(crate::gog_installeur::DOSSIER_INSTALLEURS));
+
+        assert!(!p.galaxy_peut_aider && !p.rattrapage);
+
+        // Déjà installé (registre), dossier non vide, aucun emplacement : refus dits, rien de préparé, jamais Galaxy.
+        let dest = jeux.join("Another World");
+        let mut v = crate::boutiques_pc::Valeurs::new();
+        v.insert("path".into(), dest.display().to_string());
+        let installe = FauxRegistre(Some(v));
+        let (p, plan) = preparer_gog(&n, &emp, &reseau, "1207658924", &installe).await.unwrap();
+        assert!(p.refus.unwrap().contains("déjà installé") && plan.is_none() && !p.galaxy_peut_aider);
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("x"), b"x").unwrap();
+        let (p, _) = preparer_gog(&n, &emp, &reseau, "1207658924", &FauxRegistre(None)).await.unwrap();
+        assert!(p.refus.unwrap().contains("pas vide"));
+        let (p, _) = preparer_gog(&n, &Emplacements::default(), &reseau, "1207658924", &FauxRegistre(None)).await.unwrap();
+        assert!(p.refus.unwrap().contains("Emplacements des jeux"));
+
+        // Installé par Frogtend pendant qu'il était fermé (note « en cours », jeu vérifiable) : à finir, pas un refus.
+        std::fs::write(dest.join("goggame-1207658924.info"), br#"{"gameId":"1207658924","playTasks":[{"type":"FileTask","category":"game","path":"x.exe"}]}"#).unwrap();
+        std::fs::write(dest.join("x.exe"), b"MZ").unwrap();
+        let en_cours = jeux.join(crate::gog_installeur::DOSSIER_INSTALLEURS).join("1207658924");
+        std::fs::create_dir_all(&en_cours).unwrap();
+        std::fs::write(en_cours.join(crate::gog_installeur::NOTE_EN_COURS), serde_json::json!({"dest": dest.display().to_string()}).to_string()).unwrap();
+        let (p, plan) = preparer_gog(&n, &emp, &reseau, "1207658924", &installe).await.unwrap();
+        assert!(p.rattrapage && p.refus.is_none() && plan.is_some());
+    }
+
+    /// Un faux registre (jamais le vrai) : l'entrée du jeu, ou rien.
+    struct FauxRegistre(Option<crate::boutiques_pc::Valeurs>);
+
+    impl crate::gog_installeur::PcGog for FauxRegistre {
+        fn signe_par_gog(&self, _exe: &std::path::Path) -> Resultat<bool> {
+            Ok(false)
+        }
+        fn executer_eleve(&self, _exe: &std::path::Path, _parametres: &str, _travail: &std::path::Path) -> crate::gog_installeur::IssueInno {
+            crate::gog_installeur::IssueInno::Impossible("jamais dans un test".into())
+        }
+        fn entree(&self, _id: &str) -> Option<crate::boutiques_pc::Valeurs> {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn le_jeton_garde_vit_moins_longtemps_que_chez_gog() {
+        assert_eq!(vie_jeton_gog(3600), 3300);
+        assert_eq!(vie_jeton_gog(0), 3000);
+        assert_eq!(vie_jeton_gog(100), 0, "un jeton trop court est renouvelé à chaque demande");
+    }
+
+    #[test]
+    fn l_annulation_ne_vaut_que_pendant_le_telechargement() {
+        use std::sync::atomic::Ordering;
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(annuler_installation_gog(d.path(), "42"), Ok(false), "rien en cours");
+        let (garde, arret, annulable) = GardeInstallationGog::prendre(d.path(), "42");
+        assert_eq!(annuler_installation_gog(std::path::Path::new("autres-donnees"), "42"), Ok(false), "d'autres données : rien");
+        assert_eq!(annuler_installation_gog(d.path(), "42"), Ok(true));
+        assert!(arret.load(Ordering::SeqCst));
+        annulable.store(false, Ordering::SeqCst);
+        assert!(matches!(annuler_installation_gog(d.path(), "42"), Err(Erreur::Refus(m)) if m.contains("ne peut plus être arrêté")));
+        drop(garde);
+        assert_eq!(annuler_installation_gog(d.path(), "42"), Ok(false), "rendue à la fin");
+    }
+}
+
 /// Le refus d'un import par une clé d'API d'un autre compte que celui connecté par la page.
 const MOTIF_CLE_AUTRE_COMPTE: &str =
     "Ta clé d'API Steam est celle d'un autre compte que celui connecté : règle-la à nouveau pour ce compte (Secours), ou reconnecte-toi avec le bon compte.";

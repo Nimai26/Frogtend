@@ -90,7 +90,7 @@ export interface ProgresMod {
   suivi: number;
   /** `verification`, `retrait` et `remise` (lot M1) : les fichiers des mods de Vortex prouvés, rangés hors du jeu, ou
    * remis — comptés en fichiers. */
-  etape: 'telechargement' | 'decompression' | 'pose' | 'verification' | 'retrait' | 'remise';
+  etape: 'telechargement' | 'decompression' | 'pose' | 'verification' | 'retrait' | 'remise' | 'controle' | 'installation';
   faits: number;
   total: number;
   /** Octets par seconde (0 : inconnu). */
@@ -105,7 +105,13 @@ export const ETAPE_MOD: Record<ProgresMod['etape'], string> = {
   verification: 'Vérification des fichiers des mods',
   retrait: 'Rangement des mods hors du jeu',
   remise: 'Remise dans le jeu',
+  // Lot C4c-2 (installeur hors ligne de GOG) : la relecture d'un téléchargement repris (en octets), puis l'installeur.
+  controle: 'Vérification',
+  installation: 'Installation',
 };
+
+/** Pendant l'installeur de GOG, rien à compter : une phrase, jamais « 0 o ». */
+export const PENDANT_INSTALLATION = 'ça peut prendre quelques minutes';
 
 /** Le pourcentage, de 0 à 100 (jamais plus, même si le total annoncé était approximatif). */
 export function pourcentMod(p: ProgresMod): number {
@@ -117,6 +123,7 @@ export function pourcentMod(p: ProgresMod): number {
  * pendant la pose, « 12 fichiers sur 30 » (« 0 fichier sur 2 014 », nombres à la française). Jamais « NaN » ni
  * « Infinity ». */
 export function chiffresMod(p: ProgresMod, approx = false): string {
+  if (p.etape === 'installation') return PENDANT_INSTALLATION;
   if (p.etape === 'pose' || p.etape === 'verification' || p.etape === 'retrait' || p.etape === 'remise') {
     const fr = (n: number) => n.toLocaleString('fr-FR');
     return `${fr(p.faits)} fichier${p.faits > 1 ? 's' : ''} sur ${fr(p.total)}`;

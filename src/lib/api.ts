@@ -7,6 +7,46 @@ import type { InfosJeu } from '$lib/ludotheque/infos';
 import type { ModJeu } from '$lib/mods/mods';
 import type { InfosBoutons } from '$lib/manette/boutons';
 
+/** Lot C4c-2 : un jeu ou un DLC GOG dans l'accord, sa taille ANNONCÉE par GOG (arrondie). */
+export interface ElementGogVu {
+  id: string;
+  titre: string;
+  taille: number;
+}
+
+/** Lot C4c-2 : la préparation d'une installation GOG (`gog_installation_preparer`). */
+export interface PreparationGog {
+  titre: string;
+  en_francais: boolean;
+  langue_installeur: string;
+  dossier: string;
+  jeu: ElementGogVu | null;
+  dlcs: ElementGogVu[];
+  libre: number | null;
+  deja_recus: number;
+  marge: number;
+  refus: string | null;
+  galaxy: boolean;
+  /** GOG Galaxy peut aider : seulement quand GOG n'a pas d'installeur hors ligne pour Windows. */
+  galaxy_peut_aider: boolean;
+  /** Installé pendant que Frogtend était fermé : il reste à le vérifier et le rendre jouable (rien à télécharger). */
+  rattrapage: boolean;
+}
+
+/** Lot C4c-2 : ce que l'installation a donné (`pause` : arrêtée pendant le téléchargement, rien d'installé). */
+export interface BilanInstallationGog {
+  pause: boolean;
+  titre: string;
+  dlcs_installes: string[];
+  dlcs_echoues: [string, string][];
+  /** Les octets des installeurs gardés (DLC en échec). */
+  installeurs_gardes: number;
+  /** Frogtend n'a pas pu écrire dans le dossier du jeu (droits). */
+  dossier_protege: boolean;
+  /** Le jeu avait été installé pendant que Frogtend était fermé : vérifié et rendu jouable. */
+  rattrape: boolean;
+}
+
 export interface Profil {
   id: string;
   nom: string;
@@ -1458,6 +1498,12 @@ export const api = {
   gogImporterConnecte: (montrer = false, reconnexion = false) => appeler<ImportGog>('boutique_gog_importer_connecte', { montrer, reconnexion }),
   /** Lot C4b : avant d'installer un jeu GOG, l'avertissement « GOG Galaxy est sur un autre compte » (ou `null`). */
   gogAvertissementInstallation: (cle: string) => appeler<string | null>('boutique_gog_avertissement_installation', { cle }),
+  /** Lot C4c-2 : ce que la fenêtre d'accord montre avant d'installer un jeu GOG sans Galaxy (fiche publique de GOG). */
+  gogInstallationPreparer: (cle: string) => appeler<PreparationGog>('gog_installation_preparer', { cle }),
+  /** Lot C4c-2 : installe le jeu et les DLC cochés par l'installeur hors ligne officiel (progression `mod-progres`). */
+  gogInstaller: (cle: string, dlcs: string[], suivi: number) => appeler<BilanInstallationGog>('gog_installer', { cle, dlcs, suivi }),
+  /** Lot C4c-2 : arrête l'installation pendant son téléchargement (`false` : rien en cours). */
+  gogInstallationAnnuler: (cle: string) => appeler<boolean>('gog_installation_annuler', { cle }),
   /** Lot C4b : « ➕ Ajouter un compte GOG » (fenêtre de connexion de GOG, montrée, navigation privée). */
   gogAjouterCompte: () => appeler<AjoutGog>('boutique_gog_ajouter_compte'),
   /** Lot C4b : « Oublier ce compte » GOG (ses jeux restent dans la ludothèque). */

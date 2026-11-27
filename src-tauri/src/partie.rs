@@ -454,11 +454,12 @@ async fn lancer_par_la_boutique(
 /// Les jeux en cours d'installation, par dossier de données de Frogtend et numéro (un seul passage à la fois par jeu).
 static INSTALLATIONS_EN_COURS: std::sync::Mutex<Vec<(PathBuf, i64)>> = std::sync::Mutex::new(Vec::new());
 
-/// Rendue à la fin de l'installation, même après une erreur.
-struct InstallationEnCours((PathBuf, i64));
+/// Rendue à la fin de l'installation, même après une erreur. Lot C4c-2 : prise aussi par l'installation d'un jeu GOG
+/// (`commandes::gog_installer`, numéro de sa carte).
+pub(crate) struct InstallationEnCours((PathBuf, i64));
 
 impl InstallationEnCours {
-    fn prendre(donnees: &Path, id: i64) -> Resultat<Self> {
+    pub(crate) fn prendre(donnees: &Path, id: i64) -> Resultat<Self> {
         let cle = (donnees.to_path_buf(), id);
         let mut l = INSTALLATIONS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner());
         if l.contains(&cle) {

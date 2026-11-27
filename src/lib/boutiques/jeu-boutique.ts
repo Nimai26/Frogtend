@@ -2,6 +2,7 @@
 // GOG, Ubisoft Connect, Amazon Games, Xbox (import automatique, lot A du 18/11), ou GOG Galaxy pour les jeux qu'il relie.
 import { adresseJaquette, api, type JeuResume } from '$lib/api';
 import { confirmerInstallationGog } from './installation-gog';
+import { installerGog } from './installer-gog.svelte';
 
 /** Les boutiques proposées dans le filtre de la ludothèque. */
 export const BOUTIQUES: { valeur: string; libelle: string }[] = [
@@ -56,18 +57,22 @@ export function succesGalaxy(j: Pick<JeuResume, 'source' | 'succes' | 'cle_bouti
   return { obtenus: j.succes[0], total: j.succes[1], cle: j.cle_boutique || null };
 }
 
-/** Jouer (installé) ou installer, par la boutique. */
-export async function ouvrirJeuDeBoutique(j: JeuResume) {
+/** Jouer (installé) ou installer, par la boutique. Rend vrai quand Frogtend a lui-même installé le jeu (lot C4c-2 : un
+ * jeu GOG, par l'installeur hors ligne officiel) : l'appelant relit alors ses listes. */
+export async function ouvrirJeuDeBoutique(j: JeuResume, o: { auCanape?: boolean } = {}): Promise<boolean> {
   const m = moyenDOuverture(j);
-  if (!m) return;
+  if (!m) return false;
   const action = j.installe ? 'jouer' : 'installer';
   if (m.par === 'steam') await api.steamOuvrir(m.appid, action);
   else if (m.par === 'galaxy') await api.galaxyOuvrir(m.cle);
+  // Lot C4c-2 : un jeu GOG s'installe SANS GOG Galaxy (Galaxy reste un dernier secours, proposé par installerGog).
+  else if (m.boutique === 'gog' && action === 'installer') return installerGog({ cle: m.cle, titre: j.titre }, o);
   else {
     // Lot C4b : un jeu d'un autre compte GOG que celui ouvert dans Galaxy : averti avant (jamais interdit).
-    if (m.boutique === 'gog' && action === 'installer' && !(await confirmerInstallationGog(m.cle))) return;
+    if (m.boutique === 'gog' && action === 'installer' && !(await confirmerInstallationGog(m.cle))) return false;
     await api.boutiqueOuvrir(m.boutique, m.cle, action);
   }
+  return false;
 }
 
 /** Le nom court d'une boutique dans un message (« Epic », « Ubisoft »…). */

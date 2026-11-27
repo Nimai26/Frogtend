@@ -147,7 +147,8 @@ export async function relireMaintenant() {
   }
 }
 
-/** Jouer ou installer par la boutique ; une erreur (lanceur absent…) est DITE, jamais un échec en silence. */
+/** Jouer ou installer par la boutique ; une erreur (lanceur absent…) est DITE, jamais un échec en silence. (Lot C4c-2 :
+ * un jeu GOG installé par Frogtend relit lui-même les jeux du PC et la ludothèque, `installerGog`.) */
 export async function ouvrirParLaBoutique(j: JeuResume) {
   try {
     await ouvrirJeuDeBoutique(j);

@@ -5,7 +5,8 @@
   import { isTauri } from '@tauri-apps/api/core';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { choisir } from '$lib/dialogues/fenetres.svelte';
+  import { choisir, confirmer } from '$lib/dialogues/fenetres.svelte';
+  import { avertissementSortieGog } from '$lib/boutiques/installer-gog.svelte';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { depuis, ludo, synchroniser, viderLudotheque } from '$lib/ludotheque/ludotheque.svelte';
   import { nombreEnCours } from '$lib/ludotheque/telechargements.svelte';
@@ -31,7 +32,12 @@
     const w = getCurrentWindow();
     if (action === 'reduire') await w.minimize();
     else if (action === 'agrandir') await w.toggleMaximize();
-    else await w.close();
+    else {
+      // Lot C4c-2 : une installation GOG en cours est dite avant de fermer (le jeu ne serait ni vérifié ni prêt).
+      const gogEnCours = avertissementSortieGog();
+      if (gogEnCours && !(await confirmer('Fermer Frogtend ?', { message: gogEnCours, libelleValider: 'Fermer quand même', danger: true }))) return;
+      await w.close();
+    }
   }
 
   /** 📥 Importer : la même liste que LaunchBox ; chaque choix ouvre sa fenêtre d'import. */

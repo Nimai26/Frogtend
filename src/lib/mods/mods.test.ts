@@ -74,6 +74,10 @@ describe('progression d’un mod (lot 0.82.3)', () => {
     expect(chiffresMod(p({ faits: 10, total: 0 }))).toBe('10 o');
     expect(chiffresMod(p({ faits: 600, total: 500, debit: 100 }), true)).toBe('500 o sur environ 500 o · 100 o/s');
     expect(chiffresMod(p({ etape: 'pose', faits: 1, total: 30 }))).toBe('1 fichier sur 30');
+    // Lot C4c-2 : pendant l'installeur de GOG, une phrase (jamais « 0 o ») ; la vérification d'un téléchargement repris
+    // se compte en octets.
+    expect(chiffresMod(p({ etape: 'installation', faits: 0, total: 0 }))).toBe('ça peut prendre quelques minutes');
+    expect(chiffresMod(p({ etape: 'controle', faits: 10, total: 20 }))).toBe('10 o sur 20 o');
     expect(chiffresMod(p({ etape: 'pose', faits: 12, total: 30, debit: 99 }))).toBe('12 fichiers sur 30');
     // Lot M1 : le retrait des mods de Vortex compte ses fichiers (« N fichiers sur 2 015 », à la française en 0.227.1),
     // la vérification aussi.

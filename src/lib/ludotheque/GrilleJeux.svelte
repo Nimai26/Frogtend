@@ -2,7 +2,9 @@
   // La grille des jaquettes. Un clic (ou Entrée) sélectionne un jeu ; les flèches se déplacent dans la grille ;
   // le reste de la liste se charge en arrivant en bas.
   import { goto } from '$app/navigation';
-  import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
+  import { estJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
+  // Lot C4c-2 : le double-clic passe par le même chemin que le bouton (erreur dite, listes relues après une installation).
+  import { ouvrirParLaBoutique } from '$lib/boutiques/boutiques-pc.svelte';
   import type { JeuResume } from '$lib/api';
   import { etat } from '$lib/etat.svelte';
   import Jaquette from './Jaquette.svelte';
@@ -109,7 +111,7 @@
             class:selectionnee={ludo.selection?.id === j.id}
             aria-pressed={ludo.selection?.id === j.id}
             onclick={() => (ludo.selection = j)}
-            ondblclick={() => (estJeuDeBoutique(j) && !surPcCarte(j) ? ouvrirJeuDeBoutique(j) : j.id > 0 ? goto(`/jeu/${j.id}`) : surPcCarte(j) && jouerLaCarte(j.id))}
+            ondblclick={() => (estJeuDeBoutique(j) && !surPcCarte(j) ? ouvrirParLaBoutique(j) : j.id > 0 ? goto(`/jeu/${j.id}`) : surPcCarte(j) && jouerLaCarte(j.id))}
             onfocus={() => (ludo.selection = j)}
             onkeydown={(e) => surTouche(e, i)}
           >
