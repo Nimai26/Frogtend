@@ -505,6 +505,46 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.61 (27/11, Firehouse 4.7.0, EN SERVICE, `X-Api-Jeux-Version: 1.61`) — 🎁 BONUS GOG, 2e moitié (lot B2) : annonces, envois, lecture
+Reçu par message de la session Firehouse (27/11), Seb d'accord. Ajout compatible ; la 1.60 ne change pas.
+1. `POST /bonus/annonces` — ADMIN seul (403 sinon). Corps `{gog_id, launchbox_id?, titre?, possesseur?, boutique?,
+   compte_boutique?, bonus}` ; `bonus` = la liste `bonus_content` TELLE QUE GOG LA DONNE (`{id, name, type,
+   files:[{id,size}]}`), ou nos noms (`gog_bonus_id, nom, type_gog, fichiers:[{gog_file_id, taille, nom?}]`). `count`
+   jamais lu ; seuls les numéros comptent (deux « wallpapers (en) » = deux bonus). Sans `launchbox_id`, le jeu doit être
+   reconnu « exact », sinon 409 `{code:"ambigu", candidats}` ou 404 `{code:"introuvable"}`.
+   Réponse `{ok, media_id, launchbox_id, fiche_creee, reserve, bonus:[{gog_bonus_id, type, etat:
+   deja_la|a_envoyer|refuse, motif, fichiers:[{gog_file_id, etat, envoi?, motif?}]}]}`. Fiche retrouvée ou créée
+   « possédé » ; possesseur noté (par défaut le compte du jeton) ; ré-annoncer ne change rien.
+   Types : audio → `bande_son` ; guides & reference → `guide` (`manuel` si le nom contient « manual ») ; wallpapers →
+   `fond_ecran` ; artworks → `artbook` (`livre` si le nom contient « comic ») ; avatars → `avatar` ; inconnu → `autre` ;
+   « game add-ons » et « codes » → `etat: refuse`, `type: null` (le jeu lui-même, une clé : jamais servi).
+2. `POST /bonus/envois` — ADMIN. Corps `{media_id, gog_bonus_id, gog_file_id, nom, taille, sha256, md5?}` : `taille`
+   = taille EXACTE du fichier téléchargé (celle de GOG est arrondie au Mo), `nom` = son vrai nom. Réponses :
+   `{deja_la:true, motif}` ; `{deja_la:false, refuse:true, motif}` (refus qui tient au fichier : ne JAMAIS le renvoyer) ;
+   `{envoi, recu, taille, etat}`. Idempotent (même admin + même sha256 = même envoi). Pas de plafond : seule la place
+   réelle refuse (507 chiffré) ; 503 + Retry-After si le stockage est démonté ; 404 si le bonus n'a pas été annoncé ou
+   si la fiche est cachée à ce jeton.
+   Puis `PUT|HEAD|GET /bonus/envois/{id}` EXACTEMENT comme les envois Switch 1.42 : morceaux ≤ 8 Mo avec Content-Range ;
+   409 `{recu}` = reprendre à `recu` ; HEAD → `X-Recu`, `X-Etat` ; `etat` en_cours → verification → range | refuse.
+   Firehouse vérifie taille, sha256, md5 s'il est donné (md5 faux = refus PASSAGER, renvoyable), le FORMAT lu dans le
+   fichier (pdf, epub, zip, 7z, jpg, png, webp, mp4, mkv, mp3, flac, ogg, txt) et le contenu LISTÉ d'une archive (un
+   exécutable fait refuser l'archive ; un .bin seul refusé, un .bin avec son .cue accepté). Même sha256 déjà rangé sous
+   un autre numéro → `deja_la`.
+3. Lecture, pour tous ceux qui voient la fiche :
+   - `GET /jeu/{id}/bonus` → `{ok, bonus_empreinte, bonus:[{id, type, nom, langue, format, taille, sha256,
+     source:"gog", gog_bonus_id, nom_fichier, album:null}]}` ; seuls les bonus RANGÉS y figurent ; `album` viendra
+     avec B3 (album BO-Jeux construit depuis le FLAC seul).
+   - `GET|HEAD /jeu/{id}/bonus/{bid}/fichier` : Range, ETag = sha256, Content-Disposition attachment, CSP sandbox,
+     nosniff.
+   - Catalogue : chaque jeu porte `bonus` (un nombre) et `bonus_empreinte` (null sans bonus) ; empreinte changée =
+     relire `/jeu/{id}/bonus`. Un bonus rangé change `maj_le` de la fiche (la synchro incrémentale le voit).
+   - `/moi.edition.bonus` = `{types, formats}` pour un admin, `false` sinon.
+- Exemple (tests de Firehouse, aucun bonus réel encore envoyé) : annonce de Soundtrack (FLAC) 87262 →
+  `{gog_bonus_id:"87262", type:"bande_son", etat:"a_envoyer", fichiers:[{gog_file_id:"87262", etat:"a_envoyer"}]}` ;
+  Legacy 1.63 95863 → `{gog_bonus_id:"95863", type:null, etat:"refuse", motif:"type de bonus refusé : « game add-ons »
+  (le jeu lui-même ou une clé personnelle — jamais servi)"}`.
+- Le premier envoi réel (Cyberpunk) se fera quand Seb le voudra : rien ne se lance sans son accord.
+
 ### 1.60 (27/11, Firehouse 4.6.0, EN SERVICE, `X-Api-Jeux-Version: 1.60`) — 🎁 BONUS GOG, 1re moitié (projet « 1.57 »)
 Reçu par message de la session Firehouse (27/11). Ajout compatible.
 1. `GET /jeu/gog/{gog_id}` → `{ok, media_id, launchbox_id}` ou 404 `{ok:false, code:"introuvable"}` (comme
@@ -523,8 +563,7 @@ Reçu par message de la session Firehouse (27/11). Ajout compatible.
 - 🩹 Corrigé : `POST /identifier` et `GET /jeu/steam/{appid}` : un numéro Steam porté par plusieurs plateformes
   (Cyberpunk 1091500) n'est plus « exact » au premier venu ; plateforme donnée, sinon Windows d'abord ; plusieurs jeux
   visibles = « probable » avec candidats.
-- PAS ENCORE SERVI : `POST /bonus/annonces`, `/bonus/envois`, `GET /jeu/{id}/bonus` : attendent l'extrait RÉEL de
-  `bonus_content` de Frogtend (sans liens signés ; Another World 20th, Cyberpunk 2077).
+- (Servis depuis la 1.61 : `POST /bonus/annonces`, `/bonus/envois`, `GET /jeu/{id}/bonus`.)
 
 ### Firehouse 4.0.1 (26/11) — deux gardes, aucune forme changée
 Reçu par message de la session Firehouse (26/11).
