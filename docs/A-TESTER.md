@@ -11,7 +11,7 @@
       la fenêtre d'accord dit la taille, la langue, le dossier et l'autorisation de Windows ; Annuler ne fait rien.
 - (28/11 : 1er essai refusé « pas signé par GOG » à tort — corrigé en 0.231.1, sujet réel « GOG  sp. z o.o ».)
 - (28/11, 0.231.1 : Non à Windows donnait « annulée, code 2 » : invite de l'installeur lui-même, asInvoker, Inno 5.6.2 — corrigé en 0.231.2, toujours « runas ».)
-- [ ] 2. Refaire « ⬇ Installer », accepter, puis répondre NON à Windows : « Installation annulée : tu as répondu Non… »,
+- [x] 2. Refaire « ⬇ Installer », accepter, puis répondre NON à Windows : « Installation annulée : tu as répondu Non… »,
       rien n'est installé, l'installeur est gardé.
 - [ ] 3. Recommencer et répondre OUI : progression, « Installation… », puis « ✅ … est installé : ▶ Jouer » ; aucune
       fenêtre de l'installeur à cliquer ; ▶ Jouer lance le jeu directement, sans Galaxy.
