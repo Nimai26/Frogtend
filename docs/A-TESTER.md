@@ -14,6 +14,7 @@
 - [x] 2. Refaire « ⬇ Installer », accepter, puis répondre NON à Windows : « Installation annulée : tu as répondu Non… »,
       rien n'est installé, l'installeur est gardé.
 - (28/11, 0.231.2 : Oui → jeu installé (journal « succeeded »), puis plantage 0xC000041D de l'installeur après « Notify launcher » Galaxy → annoncé à tort comme échoué ; barre immobile — corrigés en 0.231.3. Another World reste à rattacher par ⬇ Installer.)
+- (28/11, 0.231.3 : la carte montrait déjà ▶ Jouer (relue du registre) ; installeur de 123 Mo resté, pas de marque — rattrapage à la relecture du PC en 0.231.4.)
 - [ ] 3. Recommencer et répondre OUI : progression, « Installation… », puis « ✅ … est installé : ▶ Jouer » ; aucune
       fenêtre de l'installeur à cliquer ; ▶ Jouer lance le jeu directement, sans Galaxy.
 - [ ] 4. Le dossier du jeu existe là où l'accord l'a dit ; l'installeur a été effacé.

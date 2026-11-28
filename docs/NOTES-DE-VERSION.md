@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.231.4 — une installation GOG finie est toujours rattachée
+
+- Corrigé : quand un jeu GOG s'est installé mais que Frogtend ne l'a pas su (installeur qui plante en sortant, Frogtend
+  fermé pendant l'installation), la carte montrait bien ▶ Jouer, mais l'installeur téléchargé restait sur le disque et
+  le jeu n'était pas noté « installé par Frogtend ». À chaque relecture des jeux du PC (ouverture d'un profil), Frogtend
+  retrouve maintenant ces installations et les VÉRIFIE : le journal de l'installeur dit « réussi », le jeu est dans
+  l'emplacement des jeux, et le dossier, le fichier de GOG et le registre de Windows le confirment. Alors seulement il
+  note le jeu, garde le journal de l'installeur avec lui (jamais par-dessus un autre) et efface l'installeur (seulement
+  ses fichiers, à la taille exacte). Sinon, rien n'est touché. Les parties restaurées ne sont reposées que pour la
+  personne qui avait lancé l'installation.
+
 ## 0.231.3 — correctifs de l'installation GOG (essai réel d'Another World)
 
 - Corrigé : un jeu GOG bien installé était annoncé « arrêté avant la fin (code inconnu) ». L'installeur de GOG finit

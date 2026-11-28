@@ -1159,6 +1159,8 @@ pub struct Plan {
     pub installeurs: PathBuf,
     pub jeu: Element,
     pub dlcs: Vec<Element>,
+    /// Le profil qui a lancé l'installation (ses parties restaurées seules seront reposées, même au rattrapage).
+    pub profil: String,
 }
 
 impl Plan {
@@ -1193,6 +1195,9 @@ pub const NOTE_EN_COURS: &str = "frogtend-en-cours.json";
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 struct EnCours {
     dest: String,
+    /// Le profil qui a lancé l'installation (vide : note d'avant la 0.231.4, parties jamais reposées au rattrapage).
+    #[serde(default)]
+    profil: String,
 }
 
 /// L'exécution d'un installeur sur le PC, en tâche bloquante.
@@ -1224,6 +1229,59 @@ pub fn rattrapable(pc: &dyn PcGog, plan: &Plan) -> bool {
     let note = plan.installeurs.join(&plan.jeu.id).join(NOTE_EN_COURS);
     let Some(n) = std::fs::read(&note).ok().filter(|o| o.len() <= 64 * 1024).and_then(|o| serde_json::from_slice::<EnCours>(&o).ok()) else { return false };
     crate::boutiques::cle_chemin(Path::new(&n.dest)) == crate::boutiques::cle_chemin(&plan.dest) && verifier_jeu(pc, &plan.dest, &plan.jeu.id).is_ok()
+}
+
+/// Rattrape, dans un emplacement des jeux (`racine`), les installations FINIES qu'aucun « ⬇ Installer » ne reprendra
+/// (défaut vu par Seb le 28/11 : Another World installé, mais la carte, relue du registre, montrait déjà ▶ Jouer ;
+/// l'installeur et sa note restaient). Pour chaque `<racine>\Installeurs GOG (Frogtend)\<id>` qui porte la note
+/// « en cours » ET la note de l'installeur, et dont le jeu se VÉRIFIE dans le dossier nommé par la note : marque
+/// (jamais par-dessus une marque existante), journal d'Inno gardé avec le jeu, installeur effacé (seuls ses fichiers
+/// listés, à la taille exacte). Preuve exigée en plus (relecture de l'expert, 28/11) : le journal d'Inno dit
+/// « Installation process succeeded » (un installeur en échec, ou qui tourne encore après un redémarrage de Frogtend,
+/// n'est jamais effacé), et le dossier du jeu est DANS cet emplacement. `occupe(id)` : une installation de ce jeu tourne
+/// dans cette session, on n'y touche pas. Rend (numéro, profil qui avait lancé l'installation). Journal : numéros seuls.
+pub fn rattraper_finies(racine: &Path, pc: &dyn PcGog, occupe: &dyn Fn(&str) -> bool, journal: &dyn Fn(&str)) -> Vec<(String, String)> {
+    let installeurs = racine.join(DOSSIER_INSTALLEURS);
+    let Ok(lus) = std::fs::read_dir(&installeurs) else { return vec![] };
+    let mut faits = vec![];
+    for d in lus.flatten() {
+        let id = d.file_name().to_string_lossy().to_string();
+        if !crate::gratuits::numero_gog(&id) || !d.path().is_dir() || occupe(&id) {
+            continue;
+        }
+        let dossier = d.path();
+        let lire = |nom: &str| {
+            let f = dossier.join(nom);
+            std::fs::metadata(&f).ok().filter(|m| m.is_file() && m.len() <= 64 * 1024)?;
+            std::fs::read(f).ok()
+        };
+        let Some(en_cours) = lire(NOTE_EN_COURS).and_then(|o| serde_json::from_slice::<EnCours>(&o).ok()) else { continue };
+        let Some(note) = lire(NOTE_INSTALLEUR).and_then(|o| serde_json::from_slice::<NoteInstalleur>(&o).ok()) else { continue };
+        let dest = PathBuf::from(&en_cours.dest);
+        let dans_l_emplacement = dest.parent().is_some_and(|p| crate::boutiques::cle_chemin(p) == crate::boutiques::cle_chemin(racine));
+        if note.element != id || !dest.is_absolute() || !dans_l_emplacement || !inno_a_reussi(&dossier.join(JOURNAL_INNO)) || verifier_jeu(pc, &dest, &id).is_err() {
+            continue;
+        }
+        if !dest.join(DOSSIER_MARQUE).join(FICHIER_MARQUE).exists() {
+            let marque = Marque {
+                game_id: id.clone(),
+                installeur: note.installeur.clone(),
+                version: note.version.clone(),
+                md5: note.fichiers.iter().map(|f| f.md5.clone()).collect(),
+                date: crate::noyau::maintenant(),
+                dlcs: vec![],
+            };
+            if ecrire_marque(&dest, &marque).is_err() {
+                journal(&format!("installation GOG : jeu {id} : rattrapage, le dossier du jeu refuse l'écriture (marque impossible)"));
+            }
+        }
+        garder_journal_inno(&dossier.join(JOURNAL_INNO), &dest.join(DOSSIER_MARQUE).join(JOURNAL_INNO));
+        let n = effacer_installeur(&dossier);
+        journal(&format!("installation GOG : jeu {id} : installation finie rattrapée et vérifiée ; installeur effacé ({n} fichier(s))"));
+        faits.push((id, en_cours.profil));
+    }
+    let _ = std::fs::remove_dir(&installeurs); // seulement s'il est vide
+    faits
 }
 
 /// Le journal d'Inno Setup (`/LOG`) dit-il « Installation process succeeded » ? Lu jusqu'à 32 Mo ; absent ou illisible :
@@ -1280,9 +1338,24 @@ fn ecrire_marque(dest: &Path, m: &Marque) -> Resultat<()> {
     Ok(())
 }
 
-/// Copie le journal d'Inno à côté de la marque ; l'original n'est retiré que si la copie a réussi.
+/// Copie le journal d'Inno à côté de la marque, JAMAIS par-dessus un journal déjà gardé (sinon `-2`, `-3`…) ;
+/// l'original n'est retiré que si la copie a réussi.
 fn garder_journal_inno(de: &Path, vers: &Path) {
-    if de.is_file() && std::fs::copy(de, vers).is_ok() {
+    if !de.is_file() {
+        return;
+    }
+    let mut cible = vers.to_path_buf();
+    let (base, ext) = (vers.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(), vers.extension().map(|e| e.to_string_lossy().to_string()));
+    let mut n = 2;
+    while cible.exists() && n < 1000 {
+        let nom = match &ext {
+            Some(e) => format!("{base}-{n}.{e}"),
+            None => format!("{base}-{n}"),
+        };
+        cible = vers.with_file_name(nom);
+        n += 1;
+    }
+    if !cible.exists() && std::fs::copy(de, &cible).is_ok() {
         let _ = std::fs::remove_file(de);
     }
 }
@@ -1360,7 +1433,7 @@ pub async fn installer<J: SourceJeton, P: PcGog + Clone>(
     // 3. L'installeur du jeu, après la note « en cours » (Frogtend fermé pendant l'installeur : rattrapé ensuite).
     let journal_inno = dossier_jeu.join(JOURNAL_INNO);
     let parametres = parametres_inno(&plan.dest, &journal_inno)?;
-    std::fs::write(dossier_jeu.join(NOTE_EN_COURS), serde_json::to_vec(&EnCours { dest: plan.dest.display().to_string() }).unwrap_or_default())?;
+    std::fs::write(dossier_jeu.join(NOTE_EN_COURS), serde_json::to_vec(&EnCours { dest: plan.dest.display().to_string(), profil: plan.profil.clone() }).unwrap_or_default())?;
     let issue = executer(pc, dossier_jeu.join(&exe_jeu.nom), parametres.clone(), dossier_jeu.clone()).await;
     let au_registre = || pc.entree(&id).is_some();
     match issue {
@@ -1577,6 +1650,61 @@ mod tests {
         assert_eq!(place_necessaire(100_000), 2 * 102_000 + crate::jeux_pc::MARGE_LIBRE);
         // Le relevé du 26/11 : 122 683 392 annoncés pour 123 571 824 réels : couvert.
         assert!(place_necessaire(122_683_392) - crate::jeux_pc::MARGE_LIBRE >= 2 * 123_571_824);
+    }
+
+    #[test]
+    fn une_installation_finie_sans_installer_est_rattrapee_seulement_si_le_jeu_se_verifie() {
+        let racine = tempfile::tempdir().unwrap();
+        let dest = racine.path().join("Jeu 21");
+        let poser = |id: &str, avec_jeu: bool| {
+            let d = racine.path().join(DOSSIER_INSTALLEURS).join(id);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("setup.exe"), b"1234").unwrap();
+            std::fs::write(d.join(JOURNAL_INNO), "Installation process succeeded.").unwrap();
+            let note = NoteInstalleur { element: id.into(), installeur: "installer_windows_en".into(), version: "2.0".into(), fichiers: vec![Recu { nom: "setup.exe".into(), taille: 4, md5: "m".into() }] };
+            std::fs::write(d.join(NOTE_INSTALLEUR), serde_json::to_vec(&note).unwrap()).unwrap();
+            let cible = if avec_jeu { dest.display().to_string() } else { racine.path().join("Autre").display().to_string() };
+            std::fs::write(d.join(NOTE_EN_COURS), serde_json::to_vec(&EnCours { dest: cible, profil: "p1".into() }).unwrap()).unwrap();
+            d
+        };
+        let (d21, d22, d23, d24) = (poser("21", true), poser("22", false), poser("23", true), poser("24", true));
+        // 24 : son installeur n'a jamais dit « succeeded » (échec annoncé, ou encore au travail) : jamais effacé.
+        std::fs::write(d24.join(JOURNAL_INNO), "Writing uninstall key values.").unwrap();
+        // Un journal déjà gardé avec le jeu : jamais écrasé.
+        std::fs::create_dir_all(dest.join(DOSSIER_MARQUE)).unwrap();
+        std::fs::write(dest.join(DOSSIER_MARQUE).join(JOURNAL_INNO), "ancien").unwrap();
+        std::fs::create_dir_all(dest.join("bin")).unwrap();
+        std::fs::write(dest.join("bin").join("jeu.exe"), b"MZ").unwrap();
+        std::fs::write(dest.join("goggame-21.info"), serde_json::to_vec(&json!({"gameId": "21", "playTasks": [{"type": "FileTask", "category": "game", "isPrimary": true, "path": "bin\\jeu.exe"}]})).unwrap()).unwrap();
+        let pc = FauxPc::nouveau(true, vec![], true);
+        let mut v = Valeurs::new();
+        v.insert("path".into(), dest.display().to_string());
+        v.insert("gameName".into(), "Jeu".into());
+        pc.0.registre.lock().unwrap().insert("21".into(), v.clone());
+        pc.0.registre.lock().unwrap().insert("24".into(), v);
+        let lignes = Mutex::new(vec![]);
+        // 23 : une installation tourne encore (occupé) ; 22 : pas de jeu vérifié dans son dossier.
+        let faits = rattraper_finies(racine.path(), &pc, &|id| id == "23", &|l| lignes.lock().unwrap().push(l.to_string()));
+        assert_eq!(faits, vec![("21".to_string(), "p1".to_string())]);
+        assert_eq!(std::fs::read_to_string(dest.join(DOSSIER_MARQUE).join(JOURNAL_INNO)).unwrap(), "ancien", "jamais écrasé");
+        assert!(dest.join(DOSSIER_MARQUE).join("installation-gog-2.log").is_file(), "gardé à côté");
+        assert!(!d21.exists(), "installeur effacé, dossier retiré");
+        let marque: Marque = serde_json::from_slice(&std::fs::read(dest.join(DOSSIER_MARQUE).join(FICHIER_MARQUE)).unwrap()).unwrap();
+        assert_eq!((marque.game_id.as_str(), marque.installeur.as_str(), marque.version.as_str()), ("21", "installer_windows_en", "2.0"));
+        assert!(d22.join("setup.exe").is_file() && d23.join("setup.exe").is_file() && d24.join("setup.exe").is_file(), "rien d'effacé sans preuve");
+        // Un dossier de jeu HORS de cet emplacement : jamais rattrapé depuis lui.
+        let ailleurs = tempfile::tempdir().unwrap();
+        let d = ailleurs.path().join(DOSSIER_INSTALLEURS).join("21");
+        std::fs::create_dir_all(&d).unwrap();
+        for f in [NOTE_EN_COURS, NOTE_INSTALLEUR, JOURNAL_INNO] {
+            std::fs::copy(d24.join(f), d.join(f)).unwrap();
+        }
+        std::fs::write(d.join(JOURNAL_INNO), "Installation process succeeded.").unwrap();
+        std::fs::write(d.join(NOTE_INSTALLEUR), std::fs::read_to_string(d24.join(NOTE_INSTALLEUR)).unwrap().replace("\"24\"", "\"21\"")).unwrap();
+        assert!(rattraper_finies(ailleurs.path(), &pc, &|_| false, &|_| {}).is_empty());
+        assert!(lignes.lock().unwrap().iter().all(|l| !l.contains("Jeu 21") && !l.contains(&racine.path().display().to_string())));
+        // Rien à rattraper : aucun dossier, aucun effet.
+        assert!(rattraper_finies(&racine.path().join("absent"), &pc, &|_| false, &|_| {}).is_empty());
     }
 
     #[test]
@@ -2009,7 +2137,7 @@ Notify launcher: GalaxyClient.exe
     }
 
     fn plan_essai(s: &MockServer, racine: &Path) -> Plan {
-        Plan { dest: racine.join("Jeu 21"), installeurs: racine.join(DOSSIER_INSTALLEURS), jeu: element(s, "21", "f0", 25), dlcs: vec![element(s, "22", "f0", 15)] }
+        Plan { dest: racine.join("Jeu 21"), installeurs: racine.join(DOSSIER_INSTALLEURS), jeu: element(s, "21", "f0", 25), dlcs: vec![element(s, "22", "f0", 15)], profil: "p1".into() }
     }
 
     fn servir_jeu_et_dlc(s: &MockServer) -> (Vec<u8>, Vec<u8>) {
@@ -2201,7 +2329,7 @@ Notify launcher: GalaxyClient.exe
         assert!(err.to_string().contains("déjà installé"), "{err}");
         assert!(dossier.join("setup_jeu.exe").is_file());
         // Avec elle : vérifié, marqué, installeur effacé, sans rien télécharger ni lancer de plus.
-        std::fs::write(dossier.join(NOTE_EN_COURS), serde_json::to_vec(&EnCours { dest: plan.dest.display().to_string() }).unwrap()).unwrap();
+        std::fs::write(dossier.join(NOTE_EN_COURS), serde_json::to_vec(&EnCours { dest: plan.dest.display().to_string(), profil: plan.profil.clone() }).unwrap()).unwrap();
         assert!(rattrapable(&pc, &plan));
         let b = installer(&ReseauGog::essai("http://127.0.0.1:9"), &FauxJeton::nouveau(), &pc, &plan, &arret, &annulable, &rien, &|_| {}).await.unwrap();
         assert!(b.rattrape && !b.pause && !b.dossier_protege);

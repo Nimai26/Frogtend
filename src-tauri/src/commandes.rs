@@ -6410,8 +6410,38 @@ pub(crate) fn nouveaux_installes(boutique: &str, cartes: &[crate::boutiques::Jeu
 /// ce PC entrent seuls dans sa ludothèque. Appelé sans attendre par l'interface (jamais un ralentissement).
 #[tauri::command]
 /// `possedes` : le profil a accepté ses jeux possédés (lot B) ; absent : non.
-pub async fn boutiques_relire_pc(noyau: State<'_, Noyau>, possedes: Option<bool>) -> Resultat<ReleveBoutiques> {
-    relire_pc(&noyau, &crate::boutiques_pc::BOUTIQUES_PC, possedes.unwrap_or(false)).await
+pub async fn boutiques_relire_pc(app: AppHandle, noyau: State<'_, Noyau>, possedes: Option<bool>) -> Resultat<ReleveBoutiques> {
+    // Lecture du registre et petits effacements : hors du fil de l'interface (jamais un ralentissement).
+    let (donnees, places) = (noyau.dossier.clone(), emplacements(&app));
+    let rattrapes = tauri::async_runtime::spawn_blocking(move || rattraper_installations_gog(&donnees, &places, &|m| crate::noyau::journaliser_dans(&donnees, m))).await.unwrap_or_default();
+    let r = relire_pc(&noyau, &crate::boutiques_pc::BOUTIQUES_PC, possedes.unwrap_or(false)).await;
+    // Comme après une installation : les parties restaurées reposées, SEULEMENT pour le profil qui avait lancé
+    // l'installation (relecture de l'expert, 28/11) ; un autre profil ouvert : rien, noté (numéro seul).
+    let actif = noyau.actif().await.map(|q| q.id);
+    for (cle, profil) in rattrapes {
+        let id = crate::ludotheque::id_boutique("gog", &cle);
+        if profil.is_empty() || actif.as_deref() != Some(profil.as_str()) {
+            noyau.journaliser(&format!("installation GOG : jeu {cle} : rattrapée sous un autre profil, parties restaurées pas reposées"));
+            continue;
+        }
+        // Lu d'abord : le registre n'est jamais tenu pendant l'attente.
+        let lue = noyau.registre().jeu(id);
+        if let Ok(Some(crate::jeux_pc::JeuPc { installation: Some(i), .. })) = lue {
+            noyau.reposer_parties_restaurees(id, &i).await;
+        }
+    }
+    r
+}
+
+/// Les installations GOG finies qu'aucun « ⬇ Installer » ne reprendra (installeur planté, Frogtend fermé) : rattrapées
+/// dans chaque emplacement « Windows » (voir `gog_installeur::rattraper_finies`), sauf un jeu dont l'installation tourne.
+fn rattraper_installations_gog(donnees: &std::path::Path, emplacements: &Emplacements, journal: &dyn Fn(&str)) -> Vec<(String, String)> {
+    let mut faits = vec![];
+    for e in crate::jeux_pc::proposer(emplacements, "Windows", 0) {
+        let occupe = |cle: &str| crate::partie::InstallationEnCours::prendre(donnees, crate::ludotheque::id_boutique("gog", cle)).is_err();
+        faits.extend(crate::gog_installeur::rattraper_finies(std::path::Path::new(&e.chemin), &crate::gog_installeur::PcWindows::default(), &occupe, journal));
+    }
+    faits
 }
 
 /// Le profil REFUSE ses jeux possédés (✅ Seb 18/11) : ses cartes possédées sont retirées, seulement celles qui ne sont
@@ -6631,7 +6661,7 @@ async fn preparer_gog(
         return refus(prep, "Aucun dossier de jeux n'est réglé sur ce PC pour les jeux Windows : règle-le dans ⚙ Réglages, « 📁 Emplacements des jeux », puis réessaie.");
     };
     let racine = std::path::PathBuf::from(&e.chemin);
-    let plan = gi::Plan { dest: racine.join(crate::jeux_pc::nom_de_dossier(&produit.titre)), installeurs: racine.join(gi::DOSSIER_INSTALLEURS), jeu, dlcs: produit.dlcs };
+    let plan = gi::Plan { dest: racine.join(crate::jeux_pc::nom_de_dossier(&produit.titre)), installeurs: racine.join(gi::DOSSIER_INSTALLEURS), jeu, dlcs: produit.dlcs, profil: p.id.clone() };
     prep.dossier = plan.dest.display().to_string();
     prep.libre = e.libre;
     prep.deja_recus = gi::octets_deja_recus(&plan);
