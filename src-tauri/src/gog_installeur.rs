@@ -1000,7 +1000,7 @@ pub fn sens_code_inno(code: u32) -> &'static str {
     match code {
         0 => "fini",
         1 => "l'installeur n'a pas pu démarrer",
-        2 | 5 => "l'installation a été annulée",
+        2 | 5 => "l'installation a été annulée (si Windows a demandé une autorisation, il faut répondre Oui)",
         3 | 4 => "une erreur grave pendant l'installation",
         6 => "l'installeur a été arrêté de force",
         7 => "l'installeur ne peut pas continuer sur ce PC",
@@ -1071,14 +1071,11 @@ impl PcGog for PcWindows {
             unsafe { ShellExecuteExW(&mut info) }?;
             Ok(info.hProcess)
         };
-        // Verbe nul : Windows suit le manifeste de l'installeur (il demande l'élévation) ; « runas » après un 740
-        // (ERROR_ELEVATION_REQUIRED). 1223 (ERROR_CANCELLED) : la personne a répondu Non.
+        // TOUJOURS « runas » : les installeurs de GOG sont `asInvoker` (relevé le 28/11 : Another World 20th, Inno
+        // 5.6.2) et s'élèvent EUX-MÊMES ; leur invite n'était alors pas rattachée à Frogtend, et un Non sortait en
+        // code 2 au lieu de 1223. Élevé par Frogtend, l'installeur n'en redemande pas. 1223 (ERROR_CANCELLED) : Non.
         let refus = HRESULT::from_win32(1223);
-        let h = match lancer(PCWSTR::null()) {
-            Ok(h) => Ok(h),
-            Err(e) if e.code() == HRESULT::from_win32(740) => lancer(PCWSTR(runas.as_ptr())),
-            Err(e) => Err(e),
-        };
+        let h = lancer(PCWSTR(runas.as_ptr()));
         let h = match h {
             Ok(h) if !h.is_invalid() && !h.0.is_null() => h,
             Ok(_) => return IssueInno::Impossible("pas de processus".into()),
@@ -1589,7 +1586,7 @@ mod tests {
         assert!(!p.contains("/CURRENTUSER") && !p.contains("/LANG"), "HKLM lu par Frogtend ; langue choisie dans products");
         assert!(parametres_inno(Path::new("relatif"), Path::new(r"C:\j.log")).is_err());
         assert_eq!(sens_code_inno(0), "fini");
-        assert_eq!(sens_code_inno(5), "l'installation a été annulée");
+        assert!(sens_code_inno(5).starts_with("l'installation a été annulée") && sens_code_inno(2).contains("répondre Oui"));
         assert_eq!(sens_code_inno(99), "un code inconnu");
         assert_eq!(lire_content_range("bytes 10-24/25"), Some((10, 24, 25)));
         assert_eq!(lire_content_range("bytes */25"), None);

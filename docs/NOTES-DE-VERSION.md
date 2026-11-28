@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.231.2 — correctif : l'autorisation de Windows pour un jeu GOG
+
+- Corrigé : c'est maintenant FROGTEND qui demande l'autorisation de Windows avant d'installer un jeu GOG. Les
+  installeurs de GOG démarrent sans droits et la demandaient eux-mêmes : leur invite n'était pas rattachée à Frogtend
+  (gênant au canapé), et répondre Non donnait « l'installation a été annulée, code 2 » au lieu du message prévu. Une
+  seule invite, celle de Frogtend ; Non donne « Installation annulée : tu as répondu Non à Windows ».
+
 ## 0.231.1 — correctif : l'installeur GOG était refusé à tort
 
 - Corrigé : « L'installeur téléchargé n'est pas signé par GOG » sur un vrai installeur de GOG. La signature était
