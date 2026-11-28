@@ -10,9 +10,11 @@ let prochain = 0;
 /** Ce qu'on sait AVANT le premier événement du cœur (étape et total connus de l'écran). */
 export type DepartProgres = Pick<ProgresMod, 'etape' | 'total'> & { faits?: number };
 
-/** L'état montré pour un événement (ou pour le départ). */
+/** L'état montré pour un événement (ou pour le départ). `pourcent` vaut -1 pendant l'installeur de GOG (rien à compter :
+ * barre « en cours » animée, défaut vu par Seb le 28/11 : une barre vide qui ne bouge pas). */
 export function etatProgres(p: Omit<ProgresMod, 'suivi'>, approx: boolean) {
-  return { etape: ETAPE_MOD[p.etape] ?? '', chiffres: chiffresMod({ suivi: 0, ...p }, approx && p.etape === 'telechargement'), pourcent: pourcentMod({ suivi: 0, ...p }) };
+  const pourcent = p.etape === 'installation' && !(p.total > 0) ? -1 : pourcentMod({ suivi: 0, ...p });
+  return { etape: ETAPE_MOD[p.etape] ?? '', chiffres: chiffresMod({ suivi: 0, ...p }, approx && p.etape === 'telechargement'), pourcent };
 }
 
 /** Lance `travail(suivi)` en montrant sa progression ; le message et l'écoute s'arrêtent quoi qu'il arrive.

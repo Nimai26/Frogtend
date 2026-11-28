@@ -1226,6 +1226,16 @@ pub fn rattrapable(pc: &dyn PcGog, plan: &Plan) -> bool {
     crate::boutiques::cle_chemin(Path::new(&n.dest)) == crate::boutiques::cle_chemin(&plan.dest) && verifier_jeu(pc, &plan.dest, &plan.jeu.id).is_ok()
 }
 
+/// Le journal d'Inno Setup (`/LOG`) dit-il « Installation process succeeded » ? Lu jusqu'à 32 Mo ; absent ou illisible :
+/// non. Ne suffit JAMAIS seul : la vérification du jeu (ou du DLC) suit toujours.
+pub fn inno_a_reussi(journal: &Path) -> bool {
+    match std::fs::metadata(journal) {
+        Ok(m) if m.len() <= 32 * 1024 * 1024 => {}
+        _ => return false,
+    }
+    std::fs::read(journal).map(|o| String::from_utf8_lossy(&o).contains("Installation process succeeded")).unwrap_or(false)
+}
+
 /// Le message d'un installeur arrêté avant la fin (ou dont le jeu ne se retrouve pas) : ce qu'il reste à faire, pour
 /// ne jamais renvoyer vers un « Installer » qui serait refusé (dossier non vide, jeu au registre).
 fn message_inacheve(debut: &str, dest: &Path, au_registre: bool) -> String {
@@ -1364,6 +1374,11 @@ pub async fn installer<J: SourceJeton, P: PcGog + Clone>(
             journal(&format!("installation GOG : jeu {id} : installeur pas lancé ({m})"));
             return Err(Erreur::Disque("Windows n'a pas pu lancer l'installeur de GOG. Rien n'a été effacé : l'installeur est gardé.".into()));
         }
+        IssueInno::Code(c) if c != 0 && inno_a_reussi(&journal_inno) && verifier_jeu(pc, &plan.dest, &id).is_ok() => {
+            // Relevé le 28/11 (Another World 20th, Inno 5.6.2) : « Installation process succeeded », puis l'installeur
+            // prévient GOG Galaxy et PLANTE en sortant (0xC000041D). Le jeu est là et vérifié : on ne s'y fie pas au code.
+            journal(&format!("installation GOG : jeu {id} : code de sortie {c} après « Installation process succeeded », jeu vérifié"));
+        }
         IssueInno::Code(c) if c != 0 => {
             let r = au_registre();
             journal(&format!("installation GOG : jeu {id} : code de sortie {c}, dossier {}, registre {}", if vide_ou_absent(&plan.dest) { "vide" } else { "non vide" }, if r { "oui" } else { "non" }));
@@ -1408,7 +1423,7 @@ pub async fn installer<J: SourceJeton, P: PcGog + Clone>(
         match executer(pc, dossier.join(&exe.nom), parametres, dossier.clone()).await {
             IssueInno::Refuse => echec(&mut bilan, "tu as répondu Non à Windows"),
             IssueInno::Impossible(_) => echec(&mut bilan, "Windows n'a pas pu lancer son installeur"),
-            IssueInno::Code(c) if c != 0 => echec(&mut bilan, sens_code_inno(c)),
+            IssueInno::Code(c) if c != 0 && !inno_a_reussi(&journal_dlc) => echec(&mut bilan, sens_code_inno(c)),
             IssueInno::Code(_) if !verifier_dlc(pc, &plan.dest, &e.id) => echec(&mut bilan, "Frogtend ne le retrouve pas dans le jeu"),
             IssueInno::Code(_) => {
                 garder_journal_inno(&journal_dlc, &plan.dest.join(DOSSIER_MARQUE).join(format!("installation-gog-{}.log", e.id)));
@@ -1562,6 +1577,20 @@ mod tests {
         assert_eq!(place_necessaire(100_000), 2 * 102_000 + crate::jeux_pc::MARGE_LIBRE);
         // Le relevé du 26/11 : 122 683 392 annoncés pour 123 571 824 réels : couvert.
         assert!(place_necessaire(122_683_392) - crate::jeux_pc::MARGE_LIBRE >= 2 * 123_571_824);
+    }
+
+    #[test]
+    fn le_journal_d_inno_dit_si_l_installation_a_reussi() {
+        let d = tempfile::tempdir().unwrap();
+        let j = d.path().join("j.log");
+        assert!(!inno_a_reussi(&j), "absent");
+        std::fs::write(&j, "2026-11-28 15:24:02.626   Writing uninstall key values.
+").unwrap();
+        assert!(!inno_a_reussi(&j));
+        std::fs::write(&j, "2026-11-28 15:24:02.703   Installation process succeeded.
+2026-11-28 15:24:04.364   Notify launcher
+").unwrap();
+        assert!(inno_a_reussi(&j));
     }
 
     #[test]
@@ -1930,6 +1959,8 @@ mod tests {
         bloque: AtomicBool,
     }
 
+    const PLANTAGE_APRES_SUCCES: u32 = 0xC000_041D;
+
     impl FauxPc {
         fn nouveau(signe: bool, issues: Vec<IssueInno>, pose: bool) -> Self {
             FauxPc(Arc::new(FauxPcIn { signe, issues: Mutex::new(issues), registre: Mutex::new(BTreeMap::new()), lances: Mutex::new(vec![]), pose, bloque: AtomicBool::new(false) }))
@@ -1943,7 +1974,16 @@ mod tests {
         fn executer_eleve(&self, exe: &Path, parametres: &str, _travail: &Path) -> IssueInno {
             self.0.lances.lock().unwrap().push((exe.to_path_buf(), parametres.to_string()));
             let issue = { let mut l = self.0.issues.lock().unwrap(); if l.is_empty() { IssueInno::Code(0) } else { l.remove(0) } };
-            if issue == IssueInno::Code(0) && self.0.pose {
+            // 0xC000041D : comme Another World 20th le 28/11 — tout posé, « Installation process succeeded » au journal,
+            // puis un plantage en sortant.
+            let plante = issue == IssueInno::Code(PLANTAGE_APRES_SUCCES);
+            if plante && self.0.pose {
+                let log = parametres.split("/LOG=\"").nth(1).and_then(|r| r.split('"').next()).unwrap();
+                std::fs::write(log, "Installation process succeeded.
+Notify launcher: GalaxyClient.exe
+").unwrap();
+            }
+            if (issue == IssueInno::Code(0) || plante) && self.0.pose {
                 // Comme un installeur de GOG : le dossier, le programme, goggame-<id>.info, l'entrée du registre.
                 let dir = parametres.split("/DIR=\"").nth(1).and_then(|r| r.split('"').next()).unwrap();
                 let id = exe.parent().unwrap().file_name().unwrap().to_string_lossy().to_string();
@@ -2004,6 +2044,29 @@ mod tests {
         assert!(!plan.installeurs.exists(), "installeurs effacés après vérification, dossier vide retiré");
         assert!(etapes.lock().unwrap().contains(&"installation"));
         assert!(lignes.lock().unwrap().iter().all(|l| !l.contains("Jeu 21") && !l.contains(&racine.path().display().to_string())), "jamais de titre ni de chemin au journal");
+    }
+
+    #[tokio::test]
+    async fn un_installeur_qui_plante_apres_avoir_reussi_donne_un_jeu_verifie_et_installe() {
+        let s = MockServer::start_async().await;
+        servir_jeu_et_dlc(&s);
+        let racine = tempfile::tempdir().unwrap();
+        let plan = plan_essai(&s, racine.path());
+        let pc = FauxPc::nouveau(true, vec![IssueInno::Code(PLANTAGE_APRES_SUCCES), IssueInno::Code(PLANTAGE_APRES_SUCCES)], true);
+        let (arret, annulable) = (AtomicBool::new(false), AtomicBool::new(true));
+        let bilan = installer(&ReseauGog::essai(&s.base_url()), &FauxJeton::nouveau(), &pc, &plan, &arret, &annulable, &rien, &|_| {}).await.unwrap();
+        assert_eq!(bilan.dlcs_installes.len(), 1, "le DLC aussi : {:?}", bilan.dlcs_echoues);
+        let marque: Marque = serde_json::from_slice(&std::fs::read(plan.dest.join(DOSSIER_MARQUE).join(FICHIER_MARQUE)).unwrap()).unwrap();
+        assert_eq!(marque.game_id, "21");
+        assert!(!plan.installeurs.exists(), "installeurs effacés après vérification");
+
+        // Le même plantage SANS rien de posé (ni journal ni jeu) : échec, rien d'effacé.
+        let racine = tempfile::tempdir().unwrap();
+        let plan = plan_essai(&s, racine.path());
+        let pc = FauxPc::nouveau(true, vec![IssueInno::Code(PLANTAGE_APRES_SUCCES)], false);
+        let err = installer(&ReseauGog::essai(&s.base_url()), &FauxJeton::nouveau(), &pc, &plan, &arret, &AtomicBool::new(true), &rien, &|_| {}).await.unwrap_err();
+        assert!(err.to_string().contains("s'est arrêté avant la fin"), "{err}");
+        assert!(plan.installeurs.join("21").join("setup_jeu.exe").is_file(), "installeur gardé");
     }
 
     #[tokio::test]

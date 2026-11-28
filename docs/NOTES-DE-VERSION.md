@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.231.3 — correctifs de l'installation GOG (essai réel d'Another World)
+
+- Corrigé : un jeu GOG bien installé était annoncé « arrêté avant la fin (code inconnu) ». L'installeur de GOG finit
+  son travail (« Installation process succeeded » dans son journal), prévient GOG Galaxy s'il est présent, puis plante
+  en sortant. Frogtend accepte maintenant le jeu quand le journal de l'installeur dit que c'est réussi ET que sa propre
+  vérification le retrouve (dossier, fichier de GOG, registre) ; sinon, l'échec reste dit comme avant. Même règle pour
+  les DLC.
+- Corrigé : pendant l'étape « Installation », la barre restait vide et immobile (l'installeur de GOG ne dit pas où il
+  en est). Elle montre maintenant un mouvement continu, au bureau comme au canapé (une respiration douce si Windows
+  demande moins d'animations).
+- Un jeu resté installé mais pas rattaché (comme Another World le 28/11) : « ⬇ Installer » le retrouve, le vérifie et
+  le rattache sans rien retélécharger.
+
 ## 0.231.2 — correctif : l'autorisation de Windows pour un jeu GOG
 
 - Corrigé : c'est maintenant FROGTEND qui demande l'autorisation de Windows avant d'installer un jeu GOG. Les

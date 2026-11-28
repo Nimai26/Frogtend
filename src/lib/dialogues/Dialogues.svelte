@@ -231,9 +231,14 @@
       <div class="toast progres {t.type}">
         <p class="message">{t.message}</p>
         {#if t.progres.etape}<p class="etape">{t.progres.etape}</p>{/if}
-        <div class="bar" role="progressbar" aria-label={t.progres.etape || t.message} aria-valuemin="0" aria-valuemax="100" aria-valuenow={t.progres.pourcent}>
-          <span style="width: {t.progres.pourcent}%"></span>
-        </div>
+        {#if t.progres.pourcent < 0}
+          <!-- Rien à compter (l'installeur de GOG travaille) : une barre « en cours » qui bouge, sans valeur. -->
+          <div class="bar indeterminee" role="progressbar" aria-label={t.progres.etape || t.message} aria-valuemin="0" aria-valuemax="100"><span></span></div>
+        {:else}
+          <div class="bar" role="progressbar" aria-label={t.progres.etape || t.message} aria-valuemin="0" aria-valuemax="100" aria-valuenow={t.progres.pourcent}>
+            <span style="width: {t.progres.pourcent}%"></span>
+          </div>
+        {/if}
         <p class="chiffres muted" aria-live="off">{t.progres.chiffres}</p>
       </div>
     {:else}
@@ -375,6 +380,25 @@
   }
   .toast.progres .etape {
     font-weight: 600;
+  }
+  .bar.indeterminee > span {
+    width: 30%;
+    animation: en-cours 1.6s ease-in-out infinite;
+  }
+  @keyframes en-cours {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
+  }
+  /* Mouvements réduits : la barre pleine, qui « respire » doucement au lieu de glisser. */
+  @media (prefers-reduced-motion: reduce) {
+    .bar.indeterminee > span {
+      width: 100%;
+      animation: respire 2.4s ease-in-out infinite;
+    }
+    @keyframes respire {
+      0%, 100% { opacity: 0.35; }
+      50% { opacity: 0.8; }
+    }
   }
   .toast.ok { border-left-color: var(--ok); }
   .toast.alerte { border-left-color: var(--warn); }

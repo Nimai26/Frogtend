@@ -109,7 +109,7 @@ describe('avecProgres', () => {
       (p) => vus.push(p.etape),
     );
     expect(vus).toEqual(['installation']);
-    expect(vu).toEqual([expect.objectContaining({ progres: { etape: 'Installation', chiffres: 'ça peut prendre quelques minutes', pourcent: 0 } })]);
+    expect(vu).toEqual([expect.objectContaining({ progres: { etape: 'Installation', chiffres: 'ça peut prendre quelques minutes', pourcent: -1 } })]);
   });
 
   it('etatProgres : « environ » seulement pour un téléchargement approximatif', () => {
