@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## ⬇ Installer un jeu GOG sans Galaxy (0.231.0, lot C4c-2)
-- [ ] 1. Mettre à jour. Sur la carte d'un PETIT jeu GOG possédé et pas installé (Another World 20th), « ⬇ Installer » :
+- [x] 1. Mettre à jour. Sur la carte d'un PETIT jeu GOG possédé et pas installé (Another World 20th), « ⬇ Installer » :
       la fenêtre d'accord dit la taille, la langue, le dossier et l'autorisation de Windows ; Annuler ne fait rien.
 - [ ] 2. Refaire « ⬇ Installer », accepter, puis répondre NON à Windows : « Installation annulée : tu as répondu Non… »,
       rien n'est installé, l'installeur est gardé.
