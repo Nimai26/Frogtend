@@ -973,8 +973,15 @@ pub fn sujet_gog(sujet: &str) -> bool {
     parties.push(courant);
     parties.iter().any(|p| {
         let Some((k, v)) = p.trim().split_once('=') else { return false };
-        matches!(k.trim().to_ascii_uppercase().as_str(), "O" | "CN") && v.trim().trim_matches('"').eq_ignore_ascii_case(SIGNATAIRE_GOG)
+        matches!(k.trim().to_ascii_uppercase().as_str(), "O" | "CN") && nom_normalise(v.trim().trim_matches('"')) == nom_normalise(SIGNATAIRE_GOG)
     })
+}
+
+/// Un nom de signataire comparable : minuscules, espaces réduits à un seul, point final retiré. Le VRAI certificat de
+/// GOG (relevé le 28/11 sur l'installeur d'Another World 20th) dit `CN=GOG  sp. z o.o` (deux espaces, « sp » en
+/// minuscules, sans point final) ; le statut « Valid » reste exigé tel quel.
+fn nom_normalise(nom: &str) -> String {
+    nom.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase().trim_end_matches('.').to_string()
 }
 
 /// Les paramètres d'Inno Setup (voir la documentation citée en tête du module). `dest` : chemin complet, sans `\`
@@ -1569,6 +1576,10 @@ mod tests {
         assert!(!signature_gog_valide("Valid\nCN=GOG Sp. z o.o. Fake, O=Autre"));
         assert!(!signature_gog_valide("Valid\nOU=GOG Sp. z o.o., O=Autre"));
         assert!(!signature_gog_valide(""));
+        // Le sujet RÉEL relevé le 28/11 (installeur d'Another World 20th) : deux espaces, « sp », sans point final.
+        assert!(signature_gog_valide("Valid\nCN=GOG  sp. z o.o, O=GOG  sp. z o.o, L=WARSZAWA, S=MAZOWIECKIE, C=PL\n"));
+        assert!(!signature_gog_valide("Valid\nCN=GOG sp. z o.o. extra, O=GOG"));
+        assert!(!signature_gog_valide("NotSigned\nCN=GOG  sp. z o.o"));
     }
 
     #[test]

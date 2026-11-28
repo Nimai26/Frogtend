@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.231.1 — correctif : l'installeur GOG était refusé à tort
+
+- Corrigé : « L'installeur téléchargé n'est pas signé par GOG » sur un vrai installeur de GOG. La signature était
+  valide, mais le certificat de GOG écrit son nom « GOG  sp. z o.o » (deux espaces, sans point final) et Frogtend
+  attendait l'orthographe exacte « GOG Sp. z o.o. ». La comparaison ignore maintenant les majuscules, les espaces en
+  trop et le point final ; une signature invalide est toujours refusée. L'installeur déjà téléchargé resservira.
+
 ## 0.231.0 — ⬇ Installer un jeu GOG sans GOG Galaxy
 
 - Nouveau : « ⬇ Installer » un jeu GOG possédé télécharge l'INSTALLEUR OFFICIEL de GOG (hors ligne) et installe le jeu
